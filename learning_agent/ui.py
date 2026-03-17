@@ -283,6 +283,12 @@ def render_page(message: Optional[str] = None, error: Optional[str] = None) -> s
       grid-template-columns: repeat(2, minmax(0, 1fr));
       margin-bottom: 18px;
     }}
+    .info-grid {{
+      display: grid;
+      gap: 18px;
+      grid-template-columns: 1.1fr 0.9fr;
+      margin-bottom: 18px;
+    }}
     .full {{
       grid-column: 1 / -1;
     }}
@@ -306,6 +312,15 @@ def render_page(message: Optional[str] = None, error: Optional[str] = None) -> s
     .metric-list, .gate-list, .artifact-list {{
       margin: 0;
       padding-left: 18px;
+    }}
+    .tour-list {{
+      margin: 0;
+      padding-left: 18px;
+      display: grid;
+      gap: 8px;
+    }}
+    .tour-list strong {{
+      color: var(--accent-dark);
     }}
     .form-grid {{
       display: grid;
@@ -355,7 +370,7 @@ def render_page(message: Optional[str] = None, error: Optional[str] = None) -> s
     }}
     .muted {{ color: var(--muted); }}
     @media (max-width: 920px) {{
-      .hero, .status-grid, .action-grid {{
+      .hero, .info-grid, .status-grid, .action-grid {{
         grid-template-columns: 1fr;
       }}
     }}
@@ -385,6 +400,7 @@ def render_page(message: Optional[str] = None, error: Optional[str] = None) -> s
       </div>
     </section>
     {render_notice(message, error)}
+    {render_info_sections()}
     {render_body(status, initialized)}
   </main>
 </body>
@@ -415,6 +431,35 @@ def render_notice(message: Optional[str], error: Optional[str]) -> str:
     if error:
         notices.append(f"<div class='notice error'>{escape(error)}</div>")
     return "".join(notices)
+
+
+def render_info_sections() -> str:
+    return """
+    <section class="info-grid">
+      <article class="panel">
+        <h2>About This Platform</h2>
+        <p>This platform is a curriculum-driven learning agent for a senior software engineer who wants to learn a new domain by building real artifacts instead of just reading or generating code blindly.</p>
+        <p>Its core job is to keep the learning loop disciplined. The platform tracks progress outside model context, hides future material until it is unlocked, asks a concept gate before implementation, and turns the current week into a focused Junior SWE task.</p>
+        <p>In Phase 1, this UI is the operational control surface for that workflow. You can use it to initialize the current week, answer the Mentor's concept question, generate the implementation brief, record evidence from your work in the target repo, and approve progression only when the week is actually complete.</p>
+        <p><strong>What you can do with it now:</strong> run the Week 1 gate, generate the current implementation task, track required files and metrics, record verification results, and manage week advancement with an explicit state machine.</p>
+        <p><strong>What it is useful for:</strong> keeping your learning structured, making each week auditable, reducing context drift between sessions, and forcing a clean separation between understanding a topic and implementing it.</p>
+      </article>
+      <article class="panel">
+        <h2>UI Walkthrough Tour</h2>
+        <ol class="tour-list">
+          <li><strong>Hero + Current State:</strong> shows whether the current week is initialized and whether concept, implementation, verification, and approval gates are complete.</li>
+          <li><strong>Week Scope:</strong> shows the allowed directories, required files, completed files, and any metrics you have already recorded.</li>
+          <li><strong>Concept Gate:</strong> shows the current Mentor question, rubric, and pass/fail result after you submit an answer.</li>
+          <li><strong>Junior SWE Task:</strong> shows the structured implementation brief generated for the current unlocked week.</li>
+          <li><strong>Approval Blockers:</strong> tells you exactly why the week cannot yet be approved.</li>
+          <li><strong>Initialize / Ask Gate / Submit Gate:</strong> start the week, generate the concept question, and submit your answer.</li>
+          <li><strong>Generate Task / Sync Artifacts:</strong> create the implementation brief and then rescan the target repo to detect completed deliverables.</li>
+          <li><strong>Record Metric / Record Verification:</strong> log the evidence that proves the current week was actually completed.</li>
+          <li><strong>Approve / Advance:</strong> explicitly finish the week and unlock the next one only after all blockers are cleared.</li>
+        </ol>
+      </article>
+    </section>
+    """
 
 
 def render_body(status: Optional[dict], initialized: bool) -> str:

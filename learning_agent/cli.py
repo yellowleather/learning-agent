@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+import time
+from pathlib import Path
 
 import typer
 
@@ -19,6 +23,14 @@ app.add_typer(gate_app, name="gate")
 app.add_typer(task_app, name="task")
 app.add_typer(record_app, name="record")
 
+RELOAD_POLL_INTERVAL_SECONDS = 0.75
+RELOAD_WATCH_TARGETS = (
+    "learning_agent",
+    "learning_agent.config.json",
+    "pyproject.toml",
+    ".env",
+)
+
 
 def get_controller() -> LearningController:
     repo_root, config = load_config()
@@ -28,6 +40,81 @@ def get_controller() -> LearningController:
 def exit_on_error(exc: LearningAgentError) -> None:
     typer.secho(str(exc), fg=typer.colors.RED, err=True)
     raise typer.Exit(code=1)
+
+
+def iter_reload_files(repo_root: Path):
+    for relative in RELOAD_WATCH_TARGETS:
+        path = repo_root / relative
+        if not path.exists():
+            continue
+        if path.is_file():
+            yield path
+            continue
+        for file_path in path.rglob("*"):
+            if not file_path.is_file():
+                continue
+            if "__pycache__" in file_path.parts:
+                continue
+            yield file_path
+
+
+def snapshot_reload_state(repo_root: Path) -> dict[str, int]:
+    snapshot = {}
+    for file_path in iter_reload_files(repo_root):
+        snapshot[str(file_path.relative_to(repo_root))] = file_path.stat().st_mtime_ns
+    return snapshot
+
+
+def build_reload_command(host: str, port: int) -> list[str]:
+    return [
+        sys.executable,
+        "-m",
+        "learning_agent",
+        "serve",
+        "--host",
+        host,
+        "--port",
+        str(port),
+        "--no-reload",
+    ]
+
+
+def stop_child_process(child: subprocess.Popen) -> None:
+    if child.poll() is not None:
+        return
+    child.terminate()
+    try:
+        child.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        child.kill()
+        child.wait(timeout=3)
+
+
+def serve_with_reload(repo_root: Path, host: str, port: int) -> None:
+    command = build_reload_command(host, port)
+    typer.echo(f"Starting UI server with reload on http://{host}:{port}")
+    child = subprocess.Popen(command, cwd=str(repo_root))
+    watch_state = snapshot_reload_state(repo_root)
+
+    try:
+        while True:
+            time.sleep(RELOAD_POLL_INTERVAL_SECONDS)
+            if child.poll() is not None:
+                raise typer.Exit(code=child.returncode or 0)
+
+            current_state = snapshot_reload_state(repo_root)
+            if current_state == watch_state:
+                continue
+
+            typer.echo("Detected code/config changes. Reloading UI server...")
+            stop_child_process(child)
+            child = subprocess.Popen(command, cwd=str(repo_root))
+            watch_state = current_state
+    except KeyboardInterrupt:
+        stop_child_process(child)
+    except typer.Exit:
+        stop_child_process(child)
+        raise
 
 
 @app.command("init")
@@ -165,9 +252,13 @@ def advance_command() -> None:
 def serve_command(
     host: str = typer.Option(DEFAULT_UI_HOST, help="Host interface to bind the UI server."),
     port: int = typer.Option(DEFAULT_UI_PORT, help="Port to bind the UI server."),
+    reload: bool = typer.Option(True, "--reload/--no-reload", help="Restart the UI server when app/config files change."),
 ) -> None:
     try:
-        get_controller()
-        serve_ui(host=host, port=port)
+        repo_root, _config = load_config()
+        if reload:
+            serve_with_reload(repo_root, host=host, port=port)
+        else:
+            serve_ui(host=host, port=port)
     except LearningAgentError as exc:
         exit_on_error(exc)

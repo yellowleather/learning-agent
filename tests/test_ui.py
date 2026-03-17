@@ -60,6 +60,10 @@ def test_render_page_shows_uninitialized_state(monkeypatch, tmp_path):
     assert "No ledger loaded yet" in page
     assert 'href="/favicon.ico"' in page
     assert 'src="/assets/icon.png"' in page
+    assert "About This Platform" in page
+    assert "UI Walkthrough Tour" in page
+    assert "senior software engineer" in page
+    assert "Approval Blockers" in page
 
 
 def test_run_action_init_creates_week_one(monkeypatch, tmp_path):
