@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "learning-agent"
+version = "0.1.0"
+description = "Phase 1 guided single-controller learning agent"
+readme = "docs/design_doc.md"
+requires-python = ">=3.9"
+dependencies = [
+  "openai>=1.0.0",
+  "pydantic>=2.6.0",
+  "typer>=0.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+]
+
+[project.scripts]
+learning_agent = "learning_agent.cli:app"
+
+[tool.setuptools]
+packages = [
+  "learning_agent",
+  "learning_agent.providers",
+]
+
+[tool.setuptools.package-data]
+learning_agent = ["prompts/*.md", "assets/*.png"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

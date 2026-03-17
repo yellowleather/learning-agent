@@ -1,1 +1,6 @@
 ai_inference_engineering/
+__pycache__/
+.pytest_cache/
+.venv/
+state/
+.env
