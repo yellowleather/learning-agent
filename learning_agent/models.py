@@ -72,6 +72,12 @@ class ConceptCard(StrictModel):
     quick_check_question: Optional[str] = None
 
 
+class RawLearningQuestion(StrictModel):
+    prompt_text: str
+    tier: Literal["foundational_concepts", "implementation_knowledge", "optimization_and_production_insights"]
+    topic_area: str
+
+
 class LearningQuestion(StrictModel):
     id: str
     type: Literal["concept", "implementation", "evidence_based"]
@@ -98,6 +104,21 @@ class QuestionAttempt(StrictModel):
 class LearningAssistPayload(StrictModel):
     week: int
     concept_cards: List[ConceptCard] = Field(default_factory=list)
+    questions: List[LearningQuestion] = Field(default_factory=list)
+
+
+class RawQuestionBankPayload(StrictModel):
+    week: int
+    questions: List[RawLearningQuestion] = Field(default_factory=list)
+
+
+class ConceptCardPayload(StrictModel):
+    week: int
+    concept_cards: List[ConceptCard] = Field(default_factory=list)
+
+
+class ClassifiedQuestionBankPayload(StrictModel):
+    week: int
     questions: List[LearningQuestion] = Field(default_factory=list)
 
 

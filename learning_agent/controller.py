@@ -8,15 +8,18 @@ from learning_agent.curriculum import get_week_spec, load_curriculum
 from learning_agent.errors import LearningAgentError
 from learning_agent.models import (
     AppConfig,
+    ClassifiedQuestionBankPayload,
     CheckpointState,
+    ConceptCardPayload,
     EvidenceQuestionPayload,
     GateSession,
     Ledger,
-    LearningAssistPayload,
     LearningQuestion,
     LearningSession,
     ObservationRecord,
     QuestionAttempt,
+    RawQuestionBankPayload,
+    RawLearningQuestion,
     ReflectionRecord,
     TaskSession,
     VerificationRecord,
@@ -110,13 +113,28 @@ class LearningController:
         ledger = self.state.load_ledger()
         week_spec = self._load_current_week_spec(ledger)
         provider = self._provider()
-        payload = provider.generate_learning_assist(week_spec, ledger.state)
-        if not isinstance(payload, LearningAssistPayload):
-            payload = LearningAssistPayload.model_validate(payload)
+        raw_payload = provider.generate_raw_question_bank(week_spec, ledger.state)
+        if not isinstance(raw_payload, RawQuestionBankPayload):
+            raw_payload = RawQuestionBankPayload.model_validate(raw_payload)
+        raw_questions = self._dedupe_raw_questions(raw_payload.questions)
+        raw_errors = self._validate_raw_questions(raw_questions)
+        if raw_errors:
+            raise LearningAgentError("Learning Assist raw question bank failed validation: " + "; ".join(raw_errors))
+        concept_payload = provider.generate_concept_cards(week_spec, ledger.state, raw_questions)
+        if not isinstance(concept_payload, ConceptCardPayload):
+            concept_payload = ConceptCardPayload.model_validate(concept_payload)
+        classified_payload = provider.classify_question_bank(week_spec, ledger.state, raw_questions)
+        if not isinstance(classified_payload, ClassifiedQuestionBankPayload):
+            classified_payload = ClassifiedQuestionBankPayload.model_validate(classified_payload)
+        question_errors = self._validate_classified_questions(classified_payload.questions, expected_count=len(raw_questions))
+        if question_errors:
+            raise LearningAgentError(
+                "Learning Assist classified question bank failed validation: " + "; ".join(question_errors)
+            )
         session = LearningSession(
-            week=payload.week,
-            concept_cards=payload.concept_cards,
-            questions=payload.questions,
+            week=week_spec.number,
+            concept_cards=concept_payload.concept_cards,
+            questions=classified_payload.questions,
         )
         self.state.save_learning(session)
         self._sync_learning_progress(ledger, session)
@@ -290,6 +308,98 @@ class LearningController:
     def _sync_learning_progress(self, ledger: Ledger, session: LearningSession) -> None:
         if self._required_question_ids(session) and self._required_questions_passed(session):
             ledger.state.gates.socratic_check_passed = True
+
+    def _dedupe_raw_questions(self, questions: list[RawLearningQuestion]) -> list[RawLearningQuestion]:
+        deduped: list[RawLearningQuestion] = []
+        seen: set[str] = set()
+        for question in questions:
+            normalized = " ".join(question.prompt_text.lower().split())
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped.append(question)
+        return deduped
+
+    def _validate_raw_questions(self, questions: list[RawLearningQuestion]) -> list[str]:
+        errors: list[str] = []
+        if len(questions) < 50:
+            errors.append(f"expected at least 50 deduped raw questions but received {len(questions)}")
+
+        tier_counts = {
+            "foundational_concepts": 0,
+            "implementation_knowledge": 0,
+            "optimization_and_production_insights": 0,
+        }
+        for question in questions:
+            if not question.prompt_text.strip():
+                errors.append("raw question bank contains an empty question prompt")
+            tier_counts[question.tier] = tier_counts.get(question.tier, 0) + 1
+            prompt_lower = question.prompt_text.lower()
+            if "week 2" in prompt_lower or "week 3" in prompt_lower or "next week" in prompt_lower:
+                errors.append(f"raw question appears to leak future scope: {question.prompt_text}")
+
+        if tier_counts["foundational_concepts"] < 18:
+            errors.append(
+                "raw question bank does not contain enough foundational questions after dedupe"
+            )
+        if tier_counts["implementation_knowledge"] < 20:
+            errors.append(
+                "raw question bank does not contain enough implementation questions after dedupe"
+            )
+        if tier_counts["optimization_and_production_insights"] < 12:
+            errors.append(
+                "raw question bank does not contain enough optimization questions after dedupe"
+            )
+        return errors
+
+    def _validate_classified_questions(
+        self, questions: list[LearningQuestion], expected_count: int
+    ) -> list[str]:
+        errors: list[str] = []
+        if len(questions) != expected_count:
+            errors.append(
+                f"classified question count {len(questions)} does not match deduped raw question count {expected_count}"
+            )
+        if len(questions) < 50:
+            errors.append(f"expected at least 50 classified questions but received {len(questions)}")
+
+        ids = [question.id for question in questions]
+        if len(set(ids)) != len(ids):
+            errors.append("classified question ids must be unique")
+
+        evidence_questions = [question.id for question in questions if question.type == "evidence_based"]
+        if evidence_questions:
+            errors.append("initial classified question bank must not include evidence-based questions")
+
+        observation_required = [question.id for question in questions if question.observation_required]
+        if observation_required:
+            errors.append("initial classified question bank must set observation_required=false for all questions")
+
+        tier1 = [
+            question
+            for question in questions
+            if question.type == "concept" and question.scope == "core" and question.depth in {"baseline", "deep"}
+        ]
+        tier2 = [
+            question
+            for question in questions
+            if question.type == "implementation"
+            and question.scope == "core"
+            and question.depth in {"baseline", "deep"}
+        ]
+        tier3 = [
+            question
+            for question in questions
+            if question.scope == "adjacent" and question.depth in {"deep", "stretch"}
+        ]
+        if len(tier1) < 18:
+            errors.append(f"expected at least 18 classified Tier 1 questions but received {len(tier1)}")
+        if len(tier2) < 20:
+            errors.append(f"expected at least 20 classified Tier 2 questions but received {len(tier2)}")
+        if len(tier3) < 12:
+            errors.append(f"expected at least 12 classified Tier 3 questions but received {len(tier3)}")
+
+        return errors
 
     def _required_question_ids(self, session: LearningSession) -> list[str]:
         return [

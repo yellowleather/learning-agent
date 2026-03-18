@@ -3,23 +3,44 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from learning_agent.models import (
+    ClassifiedQuestionBankPayload,
+    ConceptCardPayload,
     EvidenceQuestionPayload,
     GateQuestion,
     GateResult,
     GeneratedTask,
-    LearningAssistPayload,
     LearningQuestion,
     LearningSession,
     ObservationRecord,
     ProgressState,
     QuestionScore,
+    RawQuestionBankPayload,
+    RawLearningQuestion,
     WeekSpec,
 )
 
 
 class LLMProvider(ABC):
     @abstractmethod
-    def generate_learning_assist(self, week_spec: WeekSpec, ledger_state: ProgressState) -> LearningAssistPayload:
+    def generate_raw_question_bank(self, week_spec: WeekSpec, ledger_state: ProgressState) -> RawQuestionBankPayload:
+        raise NotImplementedError
+
+    @abstractmethod
+    def generate_concept_cards(
+        self,
+        week_spec: WeekSpec,
+        ledger_state: ProgressState,
+        questions: list[RawLearningQuestion],
+    ) -> ConceptCardPayload:
+        raise NotImplementedError
+
+    @abstractmethod
+    def classify_question_bank(
+        self,
+        week_spec: WeekSpec,
+        ledger_state: ProgressState,
+        questions: list[RawLearningQuestion],
+    ) -> ClassifiedQuestionBankPayload:
         raise NotImplementedError
 
     @abstractmethod

@@ -4,11 +4,13 @@ from typer.testing import CliRunner
 
 from learning_agent.cli import app
 from learning_agent.models import (
+    ClassifiedQuestionBankPayload,
+    ConceptCardPayload,
     EvidenceQuestionPayload,
     GateQuestion,
     GateResult,
-    LearningAssistPayload,
     QuestionScore,
+    RawQuestionBankPayload,
 )
 
 
@@ -16,8 +18,52 @@ runner = CliRunner()
 
 
 class FakeProvider:
-    def generate_learning_assist(self, week_spec, ledger_state):
-        return LearningAssistPayload(
+    def generate_raw_question_bank(self, week_spec, ledger_state):
+        questions = [
+            {
+                "prompt_text": "Explain prefill vs decode.",
+                "tier": "foundational_concepts",
+                "topic_area": "prefill_vs_decode",
+            }
+        ]
+        questions.extend(
+            {
+                "prompt_text": f"Concept deep question {index}",
+                "tier": "foundational_concepts",
+                "topic_area": "latency_metrics",
+            }
+            for index in range(2, 19)
+        )
+        questions.append(
+            {
+                "prompt_text": "How would you measure tokens per second?",
+                "tier": "implementation_knowledge",
+                "topic_area": "benchmarking",
+            }
+        )
+        questions.extend(
+            {
+                "prompt_text": f"Implementation deep question {index}",
+                "tier": "implementation_knowledge",
+                "topic_area": "api_serving",
+            }
+            for index in range(2, 21)
+        )
+        questions.extend(
+            {
+                "prompt_text": f"Optimization question {index}",
+                "tier": "optimization_and_production_insights",
+                "topic_area": "throughput_tradeoffs",
+            }
+            for index in range(1, 13)
+        )
+        return RawQuestionBankPayload(
+            week=week_spec.number,
+            questions=questions,
+        )
+
+    def generate_concept_cards(self, week_spec, ledger_state, questions):
+        return ConceptCardPayload(
             week=week_spec.number,
             concept_cards=[
                 {
@@ -28,19 +74,73 @@ class FakeProvider:
                     "quick_check_question": "Which phase grows with prompt length?",
                 }
             ],
-            questions=[
-                {
-                    "id": "core_prefill",
-                    "type": "concept",
-                    "scope": "core",
-                    "depth": "baseline",
-                    "prompt_text": "Explain prefill vs decode.",
-                    "scoring_rubric": ["Mention prompt processing.", "Mention iterative decoding."],
-                    "roadmap_anchor": {"week": week_spec.number},
-                    "observation_required": False,
-                }
-            ],
         )
+
+    def classify_question_bank(self, week_spec, ledger_state, questions):
+        classified_questions = [
+            {
+                "id": "core_prefill",
+                "type": "concept",
+                "scope": "core",
+                "depth": "baseline",
+                "prompt_text": "Explain prefill vs decode.",
+                "scoring_rubric": ["Mention prompt processing.", "Mention iterative decoding."],
+                "roadmap_anchor": {"week": week_spec.number},
+                "observation_required": False,
+            }
+        ]
+        classified_questions.extend(
+            {
+                "id": f"core_concept_deep_{index}",
+                "type": "concept",
+                "scope": "core",
+                "depth": "deep",
+                "prompt_text": f"Concept deep question {index}",
+                "scoring_rubric": ["Explain the concept clearly."],
+                "roadmap_anchor": {"week": week_spec.number},
+                "observation_required": False,
+            }
+            for index in range(2, 19)
+        )
+        classified_questions.append(
+            {
+                "id": "impl_measure_tokens",
+                "type": "implementation",
+                "scope": "core",
+                "depth": "baseline",
+                "prompt_text": "How would you measure tokens per second?",
+                "scoring_rubric": ["Count generated tokens.", "Divide by decode time."],
+                "roadmap_anchor": {"week": week_spec.number},
+                "observation_required": False,
+            }
+        )
+        classified_questions.extend(
+            {
+                "id": f"impl_deep_{index}",
+                "type": "implementation",
+                "scope": "core",
+                "depth": "deep",
+                "prompt_text": f"Implementation deep question {index}",
+                "scoring_rubric": ["Describe the implementation tradeoff."],
+                "roadmap_anchor": {"week": week_spec.number},
+                "observation_required": False,
+            }
+            for index in range(2, 21)
+        )
+        classified_questions.extend(
+            {
+                "id": f"adjacent_opt_{index}",
+                "type": "concept",
+                "scope": "adjacent",
+                "depth": "deep",
+                "prompt_text": f"Optimization question {index}",
+                "scoring_rubric": ["Discuss the tradeoff."],
+                "roadmap_anchor": {"week": week_spec.number},
+                "observation_required": False,
+            }
+            for index in range(1, 13)
+        )
+        return ClassifiedQuestionBankPayload(week=week_spec.number, questions=classified_questions)
 
     def generate_gate_question(self, week_spec):
         return GateQuestion(
