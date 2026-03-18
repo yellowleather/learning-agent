@@ -13,6 +13,10 @@ For the concrete implementation of the Learning Assist / In-Context Learning Loo
 
 - [in_context_learning_loop_implementation.md](/Users/prakhar/learning_agent/docs/in_context_learning_loop_implementation.md)
 
+For the planned post-Phase-1 UI evolution, see:
+
+- [polished_ui_modernization_plan.md](/Users/prakhar/learning_agent/docs/polished_ui_modernization_plan.md)
+
 Phase 1 is a **guided single-controller MVP**. It is intentionally lighter than the ideal design:
 
 - there is one controller,
