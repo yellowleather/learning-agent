@@ -3,6 +3,49 @@ import json
 from learning_agent.ui import render_page, run_action
 
 
+class FakeProvider:
+    def generate_learning_assist(self, week_spec, ledger_state):
+        return {
+            "week": week_spec.number,
+            "concept_cards": [
+                {
+                    "concept": "prefill_vs_decode",
+                    "explanation": "Prefill handles the prompt while decode emits tokens.",
+                    "why_it_matters": "Benchmark interpretation depends on this split.",
+                    "common_mistake": "Treating all latency as one number.",
+                    "quick_check_question": "Which phase grows first with prompt length?",
+                }
+            ],
+            "questions": [
+                {
+                    "id": "core_prefill",
+                    "type": "concept",
+                    "scope": "core",
+                    "depth": "baseline",
+                    "prompt_text": "Explain prefill vs decode.",
+                    "scoring_rubric": ["Mention prompt processing.", "Mention iterative decoding."],
+                    "roadmap_anchor": {"week": week_spec.number},
+                    "observation_required": False,
+                }
+            ],
+        }
+
+    def generate_gate_question(self, week_spec):
+        raise AssertionError("Legacy gate is not exercised in this UI test.")
+
+    def score_gate_answer(self, week_spec, question, answer):
+        raise AssertionError("Legacy gate is not exercised in this UI test.")
+
+    def generate_task(self, week_spec, ledger_state):
+        raise AssertionError("Task generation is not exercised in this UI test.")
+
+    def score_learning_question(self, week_spec, question, answer, observation):
+        return {"passed": True, "score_rationale": "Good answer.", "missing_concepts": []}
+
+    def generate_evidence_questions(self, week_spec, observation, learning_session):
+        return {"week": week_spec.number, "questions": []}
+
+
 def write_config(tmp_path):
     config = {
         "provider": "openai",
@@ -79,3 +122,21 @@ def test_run_action_init_creates_week_one(monkeypatch, tmp_path):
     page = render_page()
     assert "Week 1" in page
     assert "simple_server/server.py" in page
+
+
+def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
+    write_config(tmp_path)
+    write_roadmap(tmp_path)
+    (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: FakeProvider())
+
+    assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
+    assert run_action("learning_generate", {"action": ["learning_generate"]}) == "Generated Learning Assist for Week 1."
+
+    page = render_page()
+    assert "Learning Assist" in page
+    assert "core_prefill" in page
+    assert "Record Observation" in page
+    assert "Record Reflection" in page

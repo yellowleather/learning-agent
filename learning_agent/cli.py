@@ -5,21 +5,25 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Optional
 
 import typer
 
 from learning_agent.config import load_config
 from learning_agent.controller import LearningController
 from learning_agent.errors import LearningAgentError
+from learning_agent.models import ObservationRecord, ReflectionRecord
 from learning_agent.ui import DEFAULT_UI_HOST, DEFAULT_UI_PORT, serve_ui
 
 
 app = typer.Typer(help="Guided single-controller learning agent.")
 gate_app = typer.Typer(help="Run the concept gate flow.")
+learn_app = typer.Typer(help="Run the Learning Assist flow.")
 task_app = typer.Typer(help="Generate the Junior SWE task.")
 record_app = typer.Typer(help="Record execution progress.")
 
 app.add_typer(gate_app, name="gate")
+app.add_typer(learn_app, name="learn")
 app.add_typer(task_app, name="task")
 app.add_typer(record_app, name="record")
 
@@ -141,10 +145,30 @@ def status_command() -> None:
         if status["recorded_metrics"]:
             typer.echo(f"Recorded metrics: {json.dumps(status['recorded_metrics'], sort_keys=True)}")
         typer.echo(f"Gates: {json.dumps(status['gates'], sort_keys=True)}")
+        typer.echo(f"Learning Assist: {'enabled' if status['learning_assist_enabled'] else 'hidden'}")
+        progress = status["question_progress"]
+        typer.echo(
+            "Question coverage: "
+            f"{progress['required_passed']}/{progress['required_total']} required questions passed"
+        )
+        if status["evidence_required"]:
+            typer.echo(
+                "Evidence questions: "
+                f"{progress['evidence_answered']}/{progress['evidence_total']} answered"
+            )
         typer.echo(f"Gate asked: {'yes' if status['gate_asked'] else 'no'}")
+        typer.echo(f"Learning generated: {'yes' if status['learning_generated'] else 'no'}")
         typer.echo(f"Task generated: {'yes' if status['task_generated'] else 'no'}")
         if status["verification"]:
             typer.echo(f"Verification: {json.dumps(status['verification'], sort_keys=True)}")
+        if status["observation"]:
+            typer.echo(f"Observation: {json.dumps(status['observation'], sort_keys=True)}")
+        if status["reflection"]:
+            typer.echo(f"Reflection: {json.dumps(status['reflection'], sort_keys=True)}")
+        if status["checkpoints"]:
+            typer.echo("Checkpoints:")
+            for checkpoint in status["checkpoints"]:
+                typer.echo(f"- {checkpoint['title']}: {checkpoint['status']} ({checkpoint['reason']})")
         if status["approval_blockers"]:
             typer.echo(f"Approval blockers: {'; '.join(status['approval_blockers'])}")
     except LearningAgentError as exc:
@@ -175,6 +199,52 @@ def gate_submit_command(answer: str = typer.Option(..., help="Your answer to the
         typer.echo(result.score_rationale)
         if result.missing_concepts:
             typer.echo(f"Missing concepts: {', '.join(result.missing_concepts)}")
+    except LearningAgentError as exc:
+        exit_on_error(exc)
+
+
+@learn_app.command("generate")
+def learn_generate_command() -> None:
+    try:
+        controller = get_controller()
+        session = controller.generate_learning_assist()
+        typer.echo(f"Generated Learning Assist for Week {session.week}.")
+        typer.echo(f"Concept cards: {len(session.concept_cards)}")
+        typer.echo(f"Questions: {len(session.questions)}")
+        for question in session.questions:
+            typer.echo(
+                f"- {question.id} [{question.type}/{question.scope}/{question.depth}] "
+                f"{question.prompt_text}"
+            )
+    except LearningAgentError as exc:
+        exit_on_error(exc)
+
+
+@learn_app.command("answer")
+def learn_answer_command(
+    question_id: str = typer.Option(..., help="Question id from the current Learning Assist session."),
+    answer: str = typer.Option(..., help="Your free-text answer."),
+) -> None:
+    try:
+        controller = get_controller()
+        result = controller.answer_learning_question(question_id, answer)
+        typer.echo("Pass" if result.passed else "Fail")
+        typer.echo(result.score_rationale)
+        if result.missing_concepts:
+            typer.echo(f"Missing concepts: {', '.join(result.missing_concepts)}")
+    except LearningAgentError as exc:
+        exit_on_error(exc)
+
+
+@learn_app.command("assist")
+def learn_assist_command(
+    enabled: bool = typer.Option(..., "--enabled/--disabled", help="Show or hide concept cards in the UI."),
+) -> None:
+    try:
+        controller = get_controller()
+        ledger = controller.set_learning_assist_enabled(enabled)
+        state = "enabled" if ledger.state.learning_assist_enabled else "disabled"
+        typer.echo(f"Learning Assist {state}.")
     except LearningAgentError as exc:
         exit_on_error(exc)
 
@@ -224,6 +294,61 @@ def record_verify_command(
         controller = get_controller()
         ledger = controller.record_verification(passed, summary)
         typer.echo(f"Verification recorded: {'passed' if ledger.state.gates.verification_passed else 'failed'}.")
+    except LearningAgentError as exc:
+        exit_on_error(exc)
+
+
+@record_app.command("observation")
+def record_observation_command(
+    command: str = typer.Option(..., help="Command that produced the observation."),
+    artifact_path: str = typer.Option(..., help="Artifact path where results were recorded."),
+    reliability: str = typer.Option(
+        "uncertain",
+        help="One of: valid, invalid_due_to_bug, invalid_due_to_bad_measurement, uncertain.",
+    ),
+    prompt_tokens: Optional[int] = typer.Option(None, help="Prompt token count."),
+    output_tokens: Optional[int] = typer.Option(None, help="Output token count."),
+    latency_p95_ms: Optional[float] = typer.Option(None, help="Observed p95 latency in milliseconds."),
+    tokens_per_sec: Optional[float] = typer.Option(None, help="Observed tokens per second."),
+    notes: str = typer.Option("", help="Short observation notes."),
+) -> None:
+    try:
+        controller = get_controller()
+        observation = ObservationRecord(
+            command=command,
+            artifact_path=artifact_path,
+            reliability=reliability,
+            prompt_tokens=prompt_tokens,
+            output_tokens=output_tokens,
+            latency_p95_ms=latency_p95_ms,
+            tokens_per_sec=tokens_per_sec,
+            notes=notes,
+        )
+        ledger = controller.record_observation(observation)
+        typer.echo(
+            "Observation recorded. "
+            f"Evidence reliability is {'valid' if ledger.state.gates.evidence_reliable else 'blocked'}."
+        )
+    except LearningAgentError as exc:
+        exit_on_error(exc)
+
+
+@record_app.command("reflection")
+def record_reflection_command(
+    text: str = typer.Option(..., help="Your reflection on the observed result."),
+    trustworthy: Optional[bool] = typer.Option(
+        None,
+        "--trustworthy/--not-trustworthy",
+        help="Whether the evidence is trustworthy.",
+    ),
+    buggy: bool = typer.Option(False, "--buggy/--not-buggy", help="Whether the implementation or measurement appears buggy."),
+    next_fix: str = typer.Option("", help="Next fix to try if the evidence is unreliable."),
+) -> None:
+    try:
+        controller = get_controller()
+        reflection = ReflectionRecord(text=text, trustworthy=trustworthy, buggy=buggy, next_fix=next_fix)
+        controller.record_reflection(reflection)
+        typer.echo("Reflection recorded.")
     except LearningAgentError as exc:
         exit_on_error(exc)
 
