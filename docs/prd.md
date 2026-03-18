@@ -59,7 +59,7 @@ learning-agent/                  (Agent platform)
 ├── state/
 │   └── progress_ledger.json     # Persistent runtime state
 └── docs/
-    └── design_doc.md
+    └── prd.md
 
 ai_inference_engineering/        (Target repository)
 ├── simple_server/

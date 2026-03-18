@@ -4,9 +4,9 @@
 
 This document describes the **actual Phase 1 implementation** of the learning agent platform.
 
-It complements [design_doc.md](/Users/prakhar/learning_agent/docs/design_doc.md):
+It complements [prd.md](/Users/prakhar/learning_agent/docs/prd.md):
 
-- `design_doc.md` explains the ideal system and the phased architecture,
+- `prd.md` explains the ideal system and the phased architecture,
 - this document explains what has been built so far in Phase 1, how it works, and how to use it.
 
 For the concrete implementation of the Learning Assist / In-Context Learning Loop feature, see:
