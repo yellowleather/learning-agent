@@ -9,6 +9,10 @@ It complements [design_doc.md](/Users/prakhar/learning_agent/docs/design_doc.md)
 - `design_doc.md` explains the ideal system and the phased architecture,
 - this document explains what has been built so far in Phase 1, how it works, and how to use it.
 
+For the concrete implementation of the Learning Assist / In-Context Learning Loop feature, see:
+
+- [in_context_learning_loop_implementation.md](/Users/prakhar/learning_agent/docs/in_context_learning_loop_implementation.md)
+
 Phase 1 is a **guided single-controller MVP**. It is intentionally lighter than the ideal design:
 
 - there is one controller,
