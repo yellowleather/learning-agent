@@ -215,6 +215,8 @@ def test_render_page_shows_uninitialized_state(monkeypatch, tmp_path):
     assert "What You Will See" in page
     assert "sidebar-edge-toggle" in page
     assert "left-sidebar" in page
+    assert "data-course-bar" in page
+    assert "Initialize Week 1 to start the course" in page
     assert "senior software engineer" in page
     assert "Learn:" in page
     assert "Approve:" in page
@@ -233,6 +235,7 @@ def test_run_action_init_creates_week_one(monkeypatch, tmp_path):
     page = render_page()
     assert "Week 1" in page
     assert "simple_server/server.py" in page
+    assert "Week 1 - Build a Baseline Inference Server" in page
 
 
 def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
@@ -262,6 +265,9 @@ def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
     assert "Open Learn" in page
     assert "Concept Card Visibility" not in page
     assert "Hide Concept Cards" not in page
+    assert "Week 1 - Build a Baseline Inference Server" in page
+    assert "Current step: Learn" in page
+    assert 'content: "▶"' in page
     assert page.index("Concept Cards") < page.index("Answer Question")
     assert "Question 1 of 50" in page
     assert "title='Previous Question'" in page
@@ -278,6 +284,9 @@ def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
     assert "question-list-panel" not in page
     assert "data-question-step-link" in page
     assert "data-question-modal-link" in page
+    assert "data-question-status-badge" in page
+    assert "data-base-status='not_started'" in page
+    assert 'draft: "Draft"' in page
     assert "data-question-modal-open" in page
     assert "data-question-modal-close" in page
     assert "data-learning-answer-form" in page
@@ -285,7 +294,7 @@ def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
     assert "data-draft-status" in page
     assert "learning-agent-draft-week-" in page
     assert "<summary>What A Good Answer Should Cover</summary>" in page
-    assert ".details-inline summary::before" in page
+    assert "rubric-inline" in page
 
 
 def test_render_page_autoloads_learning_assist_only_once(monkeypatch, tmp_path):

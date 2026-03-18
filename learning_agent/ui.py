@@ -279,6 +279,7 @@ def render_page(
       --warning-soft: #fff6e8;
       --shadow: 0 22px 60px rgba(23, 33, 43, 0.10);
       --sidebar-width: 380px;
+      --course-bar-space: 104px;
     }}
     * {{ box-sizing: border-box; }}
     body {{
@@ -293,7 +294,7 @@ def render_page(
     main {{
       width: min(1320px, calc(100vw - 40px));
       margin: 0 auto;
-      padding: 28px 20px 56px;
+      padding: 28px 20px calc(var(--course-bar-space) + 24px);
       transition: width 180ms ease, margin-left 180ms ease, margin-right 180ms ease;
     }}
     body:not(.sidebar-collapsed) main {{
@@ -307,6 +308,47 @@ def render_page(
       gap: 14px;
       color: inherit;
       text-decoration: none;
+    }}
+    .course-bar {{
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 35;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 32px max(12px, env(safe-area-inset-bottom, 0px));
+      border: 1px solid rgba(118, 156, 181, 0.45);
+      border-bottom: 0;
+      border-radius: 18px 18px 0 0;
+      background: rgba(255, 252, 245, 0.98);
+      box-shadow: 0 20px 50px rgba(23, 33, 43, 0.14);
+      backdrop-filter: blur(10px);
+    }}
+    .course-bar-copy {{
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+    }}
+    .course-bar-title {{
+      font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+      font-weight: 700;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }}
+    .course-bar-meta {{
+      font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+      font-size: 0.84rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-dark);
+    }}
+    .course-bar-step {{
+      flex-shrink: 0;
     }}
     .brand-mark {{
       width: 64px;
@@ -420,6 +462,11 @@ def render_page(
       border-color: var(--border);
       color: var(--muted);
     }}
+    .status-badge.draft {{
+      background: var(--warning-soft);
+      border-color: #e7c38d;
+      color: var(--warning);
+    }}
     .cta-card {{
       display: grid;
       gap: 14px;
@@ -445,20 +492,55 @@ def render_page(
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      transition: left 180ms ease, background 160ms ease, border-color 160ms ease;
     }}
     .sidebar-icon {{
-      display: inline-grid;
-      grid-template-columns: repeat(2, 6px);
-      gap: 5px;
-      align-items: center;
-      justify-content: center;
-    }}
-    .sidebar-icon span {{
-      display: block;
-      width: 6px;
+      position: relative;
+      display: inline-block;
+      width: 20px;
       height: 18px;
+      transition: transform 160ms ease;
+    }}
+    .sidebar-icon::before {{
+      content: "";
+      position: absolute;
+      top: 1px;
+      bottom: 1px;
+      left: 2px;
+      width: 4px;
       border-radius: 999px;
       background: var(--accent-dark);
+      transition: opacity 160ms ease, background 160ms ease;
+    }}
+    .sidebar-icon::after {{
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: 2px;
+      width: 7px;
+      height: 7px;
+      border-top: 2px solid var(--accent-dark);
+      border-right: 2px solid var(--accent-dark);
+      transform: translateY(-50%) rotate(45deg);
+      transform-origin: center;
+      transition: transform 160ms ease, right 160ms ease, border-color 160ms ease;
+    }}
+    body.sidebar-collapsed .sidebar-edge-toggle {{
+      left: 16px;
+      background: rgba(220, 235, 244, 0.96);
+      border-color: rgba(118, 156, 181, 0.65);
+    }}
+    body.sidebar-collapsed .sidebar-icon::before {{
+      opacity: 0.45;
+    }}
+    body.sidebar-collapsed .sidebar-icon::after {{
+      transform: translateY(-50%) rotate(225deg);
+    }}
+    body:not(.sidebar-collapsed) .sidebar-edge-toggle:hover,
+    body.sidebar-collapsed .sidebar-edge-toggle:hover {{
+      background: rgba(234, 243, 248, 0.98);
+      border-color: rgba(118, 156, 181, 0.75);
+      align-items: center;
     }}
     .workflow-shell {{
       display: block;
@@ -471,15 +553,19 @@ def render_page(
       position: fixed;
       top: 24px;
       left: 20px;
-      bottom: 20px;
+      bottom: calc(var(--course-bar-space) + 20px);
       width: min(var(--sidebar-width), calc(100vw - 40px));
+      overflow: hidden;
+      z-index: 30;
+      transition: opacity 180ms ease, transform 180ms ease;
+    }}
+    .left-sidebar-scroll {{
       display: grid;
       gap: 18px;
       align-content: start;
       overflow-y: auto;
+      height: 100%;
       padding-right: 4px;
-      z-index: 30;
-      transition: opacity 180ms ease, transform 180ms ease;
     }}
     body.sidebar-collapsed .left-sidebar {{
       transform: translateX(calc(-100% - 32px));
@@ -535,11 +621,26 @@ def render_page(
       list-style: none;
       cursor: pointer;
       display: grid;
+      grid-template-columns: auto 1fr;
       gap: 10px;
       padding: 20px 22px;
+      align-items: start;
     }}
     .step-summary::-webkit-details-marker {{
       display: none;
+    }}
+    .step-summary::before {{
+      content: "▶";
+      width: 16px;
+      margin-top: 2px;
+      font-size: 0.95rem;
+      line-height: 1;
+      color: var(--accent-dark);
+      transition: transform 140ms ease;
+      opacity: 0.9;
+    }}
+    .workflow-step[open] .step-summary::before {{
+      transform: rotate(90deg);
     }}
     .step-title-row {{
       display: flex;
@@ -557,6 +658,7 @@ def render_page(
       font-weight: 700;
     }}
     .step-summary p {{
+      grid-column: 2;
       margin: 0;
     }}
     .step-body {{
@@ -580,11 +682,11 @@ def render_page(
     }}
     .learn-workspace {{
       display: grid;
-      grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.9fr);
+      grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.78fr);
       gap: 18px;
       align-items: start;
     }}
-    .reading-column, .questions-column, .reading-stack {{
+    .reading-column, .reading-column-scroll, .questions-column, .reading-stack {{
       display: grid;
       gap: 16px;
     }}
@@ -598,8 +700,15 @@ def render_page(
       top: 18px;
       align-self: start;
       max-height: calc(100vh - 36px);
+      overflow: hidden;
+      border: 1px solid rgba(199, 210, 218, 0.9);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.24);
+    }}
+    .reading-column-scroll {{
+      max-height: calc(100vh - 36px);
       overflow-y: auto;
-      padding-right: 6px;
+      padding: 12px 10px 12px 12px;
       overscroll-behavior: contain;
     }}
     .subpanel {{
@@ -647,9 +756,27 @@ def render_page(
     }}
     .help-panel summary {{
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      list-style: none;
       font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
       font-weight: 600;
       color: var(--accent-dark);
+    }}
+    .help-panel summary::-webkit-details-marker {{
+      display: none;
+    }}
+    .help-panel summary::before {{
+      content: "▶";
+      font-size: 0.95rem;
+      line-height: 1;
+      color: var(--accent-dark);
+      transition: transform 140ms ease;
+      opacity: 0.9;
+    }}
+    .help-panel[open] summary::before {{
+      transform: rotate(90deg);
     }}
     .help-grid {{
       display: grid;
@@ -984,39 +1111,58 @@ def render_page(
     }}
     .details-block summary {{
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      list-style: none;
       font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
       font-weight: 600;
       color: var(--accent-dark);
     }}
-    .details-inline {{
-      border: 0;
-      border-radius: 0;
+    .details-block summary::-webkit-details-marker {{
+      display: none;
+    }}
+    .details-block summary::before {{
+      content: "▶";
+      font-size: 0.95rem;
+      line-height: 1;
+      color: var(--accent-dark);
+      transition: transform 140ms ease;
+      opacity: 0.9;
+    }}
+    .details-block[open] summary::before {{
+      transform: rotate(90deg);
+    }}
+    .rubric-inline {{
+      margin: 0;
       padding: 0;
+      border: 0;
       background: transparent;
       box-shadow: none;
     }}
-    .details-inline summary {{
+    .rubric-inline summary {{
+      cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
       list-style: none;
+      font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+      font-weight: 600;
+      color: var(--accent-dark);
     }}
-    .details-inline summary::-webkit-details-marker {{
+    .rubric-inline summary::-webkit-details-marker {{
       display: none;
     }}
-    .details-inline summary::before {{
-      content: "";
-      width: 9px;
-      height: 9px;
-      border-right: 2px solid currentColor;
-      border-bottom: 2px solid currentColor;
-      transform: rotate(-45deg);
-      transform-origin: 55% 55%;
+    .rubric-inline summary::before {{
+      content: "▶";
+      font-size: 0.95rem;
+      line-height: 1;
+      color: var(--accent-dark);
       transition: transform 140ms ease;
-      opacity: 0.8;
+      opacity: 0.9;
     }}
-    .details-inline[open] summary::before {{
-      transform: rotate(45deg);
+    .rubric-inline[open] summary::before {{
+      transform: rotate(90deg);
     }}
     pre {{
       margin: 0;
@@ -1044,10 +1190,21 @@ def render_page(
         margin-left: 12px;
         margin-right: 12px;
       }}
+      :root {{
+        --course-bar-space: 118px;
+      }}
+      .course-bar {{
+        left: 0;
+        right: 0;
+        bottom: 0;
+        align-items: start;
+        padding-left: 16px;
+        padding-right: 16px;
+      }}
       .learn-workspace {{
         height: auto;
       }}
-      .reading-column, .questions-column {{
+      .reading-column, .reading-column-scroll, .questions-column {{
         position: static;
         max-height: none;
         overflow: visible;
@@ -1062,8 +1219,10 @@ def render_page(
       .left-sidebar {{
         top: 12px;
         left: 12px;
-        bottom: 12px;
+        bottom: calc(var(--course-bar-space) + 12px);
         width: min(92vw, 420px);
+      }}
+      .left-sidebar-scroll {{
         padding: 8px 2px 8px 0;
       }}
       .sidebar-edge-toggle {{
@@ -1073,6 +1232,7 @@ def render_page(
   </style>
   {render_flash_cleanup_script(message, error)}
   {render_sidebar_script()}
+  {render_summary_selection_script()}
   {render_question_navigation_script(status.get("week") if status else None, message)}
 </head>
 <body>
@@ -1083,6 +1243,7 @@ def render_page(
     {render_info_sections()}
     {render_body(status, initialized, selected_question_id=selected_question_id)}
   </main>
+  {render_course_bar(status, initialized)}
   {render_sidebar(status, initialized)}
 </body>
 </html>"""
@@ -1173,6 +1334,29 @@ def render_state_summary(status: Optional[dict], initialized: bool) -> str:
     )
 
 
+def render_course_bar(status: Optional[dict], initialized: bool) -> str:
+    if not initialized or not status:
+        return """
+        <div class="course-bar" data-course-bar>
+          <div class="course-bar-copy">
+            <span class="course-bar-meta">Course Position</span>
+            <span class="course-bar-title">Initialize Week 1 to start the course</span>
+          </div>
+        </div>
+        """
+
+    current_step = current_workflow_step(status)
+    return f"""
+    <div class="course-bar" data-course-bar>
+      <div class="course-bar-copy">
+        <span class="course-bar-meta">Course Position</span>
+        <span class="course-bar-title">Week {status['week']} - {escape(status['title'])}</span>
+      </div>
+      <div class="course-bar-step">{render_status_badge(step_status(status, current_step))} <span class="fine-print">Current step: {escape(workflow_label(current_step))}</span></div>
+    </div>
+    """
+
+
 def render_notice(message: Optional[str], error: Optional[str]) -> str:
     notices = []
     if message:
@@ -1234,6 +1418,29 @@ def render_sidebar_script() -> str:
 """
 
 
+def render_summary_selection_script() -> str:
+    return """
+  <script>
+    (function () {
+      function clearSelection() {
+        const selection = window.getSelection ? window.getSelection() : null;
+        if (selection && selection.removeAllRanges) {
+          selection.removeAllRanges();
+        }
+      }
+
+      window.addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll("details > summary").forEach(function (summary) {
+          summary.addEventListener("click", function () {
+            window.requestAnimationFrame(clearSelection);
+          });
+        });
+      });
+    })();
+  </script>
+"""
+
+
 def render_question_navigation_script(current_week: Optional[int], message: Optional[str]) -> str:
     week_literal = "null" if current_week is None else str(current_week)
     message_literal = json.dumps(message or "")
@@ -1273,6 +1480,44 @@ def render_question_navigation_script(current_week: Optional[int], message: Opti
         }
       }
 
+      function questionHasDraft(questionId) {
+        if (!questionId) {
+          return false;
+        }
+        const raw = window.localStorage.getItem(draftKey(questionId));
+        if (!raw) {
+          return false;
+        }
+        try {
+          const payload = JSON.parse(raw);
+          return Boolean((payload.value || "").trim());
+        } catch (_error) {
+          window.localStorage.removeItem(draftKey(questionId));
+          return false;
+        }
+      }
+
+      function badgeLabel(status) {
+        const labels = {
+          passed: "Done",
+          in_progress: "In Progress",
+          failed: "Blocked",
+          not_started: "Not Started",
+          draft: "Draft",
+        };
+        return labels[status] || status.replaceAll("_", " ");
+      }
+
+      function refreshDraftStatuses() {
+        document.querySelectorAll("[data-question-status-badge]").forEach(function (badge) {
+          const baseStatus = badge.getAttribute("data-base-status") || "not_started";
+          const questionId = badge.getAttribute("data-question-id") || "";
+          const nextStatus = baseStatus === "not_started" && questionHasDraft(questionId) ? "draft" : baseStatus;
+          badge.className = "status-badge " + nextStatus;
+          badge.textContent = badgeLabel(nextStatus);
+        });
+      }
+
       function saveDraftNow() {
         const questionId = currentQuestionId();
         const textarea = answerTextarea();
@@ -1284,10 +1529,12 @@ def render_question_navigation_script(current_week: Optional[int], message: Opti
         if (!value.trim()) {
           window.localStorage.removeItem(key);
           setDraftStatus("");
+          refreshDraftStatuses();
           return;
         }
         window.localStorage.setItem(key, JSON.stringify({ value: value, savedAt: Date.now() }));
         setDraftStatus("Draft saved locally");
+        refreshDraftStatuses();
       }
 
       function queueDraftSave() {
@@ -1350,12 +1597,14 @@ def render_question_navigation_script(current_week: Optional[int], message: Opti
         if (submittedQuestionId && submittedQuestionId === currentId && currentMessage === "Question passed.") {
           window.localStorage.removeItem(draftKey(currentId));
           setDraftStatus("");
+          refreshDraftStatuses();
         }
         if (submittedQuestionId && submittedQuestionId === currentId) {
           window.sessionStorage.removeItem(submittedQuestionKey);
         }
 
         restoreDraft();
+        refreshDraftStatuses();
 
         document.querySelectorAll("[data-question-step-link]").forEach(function (link) {
           link.addEventListener("click", function () {
@@ -1490,7 +1739,7 @@ def render_sidebar(status: Optional[dict], initialized: bool) -> str:
         body = "<article class='panel'><h2>What You Will See</h2><ul class='summary-list tight'><li><strong>Learn:</strong> concept cards and question answering.</li><li><strong>Build:</strong> the generated Junior SWE task and file sync.</li><li><strong>Verify:</strong> metrics, observation, reflection, and verification.</li><li><strong>Approve:</strong> blockers, approval, and week advancement.</li></ul></article>"
     else:
         body = f"{render_blocker_panel(status)}{render_status_panel(status)}{render_checkpoint_panel(status)}"
-    return f"<aside id='left-sidebar' class='left-sidebar'>{body}</aside>"
+    return f"<aside id='left-sidebar' class='left-sidebar'><div class='left-sidebar-scroll'>{body}</div></aside>"
 
 
 def render_workflow_nav(status: dict, current_step: str) -> str:
@@ -1609,14 +1858,16 @@ def render_learning_panel(
         </div>
         <section class="learn-workspace">
           <div class="reading-column">
-            <article class="subpanel">
-              <h3>Concept Cards</h3>
-              <div class="concept-card-grid">{cards_html}</div>
-            </article>
-            <article class="subpanel">
-              <h3>Reading Material</h3>
-              <div class="reading-stack">{sections_html}</div>
-            </article>
+            <div class="reading-column-scroll">
+              <article class="subpanel">
+                <h3>Concept Cards</h3>
+                <div class="concept-card-grid">{cards_html}</div>
+              </article>
+              <article class="subpanel">
+                <h3>Reading Material</h3>
+                <div class="reading-stack">{sections_html}</div>
+              </article>
+            </div>
           </div>
           <div class="questions-column">
             {workspace_html}
@@ -1716,7 +1967,7 @@ def render_learning_workspace(
           <p class="fine-print">Question {question_index + 1} of {len(questions)}</p>
           <p>{escape(selected_question['prompt_text'])}</p>
         </div>
-        {render_status_badge(status)}
+        {render_question_status_badge(selected_question['id'], status)}
       </div>
       <div class="question-stepper">
         {render_question_step_link(previous_question, "Previous Question", "previous")}
@@ -1738,7 +1989,7 @@ def render_learning_workspace(
       <div class="question-links">
         {related_cards}
       </div>
-      <details class="details-block details-inline">
+      <details class="rubric-inline">
         <summary>What A Good Answer Should Cover</summary>
         <ul class="summary-list tight" style="margin-top: 14px;">{rubric}</ul>
       </details>
@@ -1786,7 +2037,7 @@ def render_question_list_modal(
             f"<a class='question-modal-link{current_class}' href='/?question_id={quote_plus(question['id'])}' data-question-step-link data-question-modal-link>"
             "<div class='question-modal-meta'>"
             f"<span class='question-modal-index'>Question {index}</span>"
-            f"{render_status_badge(question_attempt_status(attempts, question['id']))}"
+            f"{render_question_status_badge(question['id'], question_attempt_status(attempts, question['id']))}"
             "</div>"
             f"<div class='question-modal-prompt'>{escape(question['prompt_text'])}</div>"
             "</a>"
@@ -2281,8 +2532,25 @@ def render_status_badge(status: str) -> str:
         "in_progress": "In Progress",
         "failed": "Blocked",
         "not_started": "Not Started",
+        "draft": "Draft",
     }
     return f"<span class='status-badge {escape(status)}'>{escape(labels.get(status, status.replace('_', ' ')))}</span>"
+
+
+def render_question_status_badge(question_id: str, status: str) -> str:
+    labels = {
+        "passed": "Done",
+        "in_progress": "In Progress",
+        "failed": "Blocked",
+        "not_started": "Not Started",
+        "draft": "Draft",
+    }
+    return (
+        f"<span class='status-badge {escape(status)}' "
+        f"data-question-status-badge data-question-id='{escape(question_id)}' data-base-status='{escape(status)}'>"
+        f"{escape(labels.get(status, status.replace('_', ' ')))}"
+        "</span>"
+    )
 
 
 def latest_attempts(learning_session: Optional[dict]) -> dict[str, dict]:
