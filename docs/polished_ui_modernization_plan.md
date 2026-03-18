@@ -27,7 +27,10 @@ The plan below is no longer purely aspirational. A first polished `Learn` vertic
 - question progress is shown inline,
 - a full question list is available in a closable modal,
 - previous/next question navigation exists as compact arrow controls,
-- in-progress answer drafts are autosaved client-side and restored when the user returns to a question.
+- in-progress answer drafts are autosaved client-side and restored when the user returns to a question,
+- a persistent bottom course-position bar keeps the current week visible,
+- top-level workflow sections have explicit disclosure indicators,
+- small browser-side interaction cleanup is in place for details/summary toggles.
 
 The long-term architecture recommendation in this document is still valid: the product should eventually move to a proper frontend stack. But the immediate UX direction is already being prototyped in:
 
@@ -155,6 +158,12 @@ The workspace should support:
 - preserving draft answers before submission.
 
 The question list should not dominate the main workspace. It should be secondary navigation surfaced through a modal or other lightweight overlay, while the primary right-side surface stays focused on answering.
+
+Accordion and disclosure behavior should also feel explicit and polished:
+
+- top-level workflow sections should visibly read as collapsible,
+- secondary explanation sections should not leave accidental text-selection artifacts after toggling,
+- persistent navigation elements such as the course-position bar should remain visible without obscuring underlying content.
 
 ### 5.3 Draft Persistence Decision
 
@@ -342,6 +351,8 @@ This should be built incrementally, not as a big-bang rewrite.
 
 Some of this has already started in the existing UI. In particular, the answer workspace, modal navigation, question-progress treatment, and client-side draft persistence should be treated as validated interaction direction rather than open questions.
 
+That same category now also includes always-visible course context and small interaction polish around disclosure controls.
+
 ### Phase 6: Migrate Remaining Workflow Screens
 
 After the new learning workspace is stable, migrate:
@@ -409,6 +420,8 @@ The modernization is successful when:
 - the full question list is available on demand and clearly shows per-question status,
 - answer drafts survive question switching before submission,
 - draft persistence feels instantaneous and does not require explicit save actions,
+- the current week and course position remain visible without covering other important UI,
+- accordion/disclosure interactions feel obvious and do not produce distracting browser-selection artifacts,
 - the UI feels like a product workspace rather than a local control panel,
 - the backend learning logic remains stable and testable,
 - future UI improvements become easier instead of harder.
