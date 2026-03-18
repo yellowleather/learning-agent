@@ -709,7 +709,6 @@ def render_page(
       max-height: calc(100vh - 36px);
       overflow-y: auto;
       padding: 12px 10px 12px 12px;
-      overscroll-behavior: contain;
     }}
     .subpanel {{
       border-radius: 18px;
