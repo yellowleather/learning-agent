@@ -423,6 +423,7 @@ def render_page(message: Optional[str] = None, error: Optional[str] = None) -> s
       }}
     }}
   </style>
+  {render_flash_cleanup_script(message, error)}
 </head>
 <body>
   <main>
@@ -480,6 +481,22 @@ def render_notice(message: Optional[str], error: Optional[str]) -> str:
     if error:
         notices.append(f"<div class='notice error'>{escape(error)}</div>")
     return "".join(notices)
+
+
+def render_flash_cleanup_script(message: Optional[str], error: Optional[str]) -> str:
+    if not message and not error:
+        return ""
+    return """
+  <script>
+    window.addEventListener("DOMContentLoaded", function () {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("message");
+      url.searchParams.delete("error");
+      const nextUrl = url.pathname + (url.search ? url.search : "") + url.hash;
+      window.history.replaceState({}, document.title, nextUrl || "/");
+    });
+  </script>
+"""
 
 
 def render_info_sections() -> str:
