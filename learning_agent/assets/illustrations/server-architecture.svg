@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 420" role="img" aria-labelledby="title desc">
+  <title id="title">Inference Server Architecture</title>
+  <desc id="desc">A flow diagram from API request to model runtime and metrics.</desc>
+  <rect width="720" height="420" rx="28" fill="#f8fbfd"/>
+  <rect x="24" y="24" width="672" height="372" rx="24" fill="#ffffff" stroke="#c7d2da" stroke-width="2"/>
+  <text x="48" y="70" font-family="IBM Plex Sans, Arial, sans-serif" font-size="28" font-weight="700" fill="#0b4667">Inference Server Architecture</text>
+  <text x="48" y="98" font-family="IBM Plex Sans, Arial, sans-serif" font-size="16" fill="#5d6b79">Understand how the request path maps to code you will write and measurements you will collect.</text>
+  <rect x="58" y="170" width="128" height="88" rx="18" fill="#dcebf4" stroke="#8ab0c5" stroke-width="2"/>
+  <text x="86" y="216" font-family="IBM Plex Sans, Arial, sans-serif" font-size="20" font-weight="700" fill="#0b4667">API</text>
+  <text x="74" y="238" font-family="IBM Plex Sans, Arial, sans-serif" font-size="13" fill="#35556d">server.py endpoint</text>
+  <rect x="222" y="170" width="128" height="88" rx="18" fill="#eef5f8" stroke="#c7d2da" stroke-width="2"/>
+  <text x="246" y="216" font-family="IBM Plex Sans, Arial, sans-serif" font-size="20" font-weight="700" fill="#35556d">Queue</text>
+  <text x="238" y="238" font-family="IBM Plex Sans, Arial, sans-serif" font-size="13" fill="#5d6b79">request staging</text>
+  <rect x="386" y="170" width="128" height="88" rx="18" fill="#fff2ea" stroke="#e0b59c" stroke-width="2"/>
+  <text x="404" y="216" font-family="IBM Plex Sans, Arial, sans-serif" font-size="20" font-weight="700" fill="#9a5a0a">Model</text>
+  <text x="410" y="238" font-family="IBM Plex Sans, Arial, sans-serif" font-size="13" fill="#7a5c39">runtime + KV cache</text>
+  <rect x="550" y="170" width="112" height="88" rx="18" fill="#e8f5ee" stroke="#b8d8c6" stroke-width="2"/>
+  <text x="566" y="216" font-family="IBM Plex Sans, Arial, sans-serif" font-size="20" font-weight="700" fill="#1f6a43">Metrics</text>
+  <text x="566" y="238" font-family="IBM Plex Sans, Arial, sans-serif" font-size="13" fill="#466b58">logs + results</text>
+  <path d="M186 214h24M350 214h24M514 214h24" stroke="#0f5f8c" stroke-width="8" stroke-linecap="round"/>
+</svg>

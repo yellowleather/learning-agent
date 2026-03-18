@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 420" role="img" aria-labelledby="title desc">
+  <title id="title">Benchmark Flow</title>
+  <desc id="desc">A loop showing how benchmark prompts become timed requests and recorded metrics.</desc>
+  <rect width="720" height="420" rx="28" fill="#f8fbfd"/>
+  <rect x="24" y="24" width="672" height="372" rx="24" fill="#ffffff" stroke="#c7d2da" stroke-width="2"/>
+  <text x="48" y="70" font-family="IBM Plex Sans, Arial, sans-serif" font-size="28" font-weight="700" fill="#0b4667">Benchmark Flow</text>
+  <text x="48" y="98" font-family="IBM Plex Sans, Arial, sans-serif" font-size="16" fill="#5d6b79">A reliable benchmark has a clear loop: prepare prompts, time requests, compute metrics, record evidence.</text>
+  <rect x="70" y="176" width="128" height="82" rx="18" fill="#dcebf4" stroke="#8ab0c5" stroke-width="2"/>
+  <text x="102" y="221" font-family="IBM Plex Sans, Arial, sans-serif" font-size="18" font-weight="700" fill="#0b4667">Prompts</text>
+  <rect x="232" y="176" width="128" height="82" rx="18" fill="#eef5f8" stroke="#c7d2da" stroke-width="2"/>
+  <text x="266" y="221" font-family="IBM Plex Sans, Arial, sans-serif" font-size="18" font-weight="700" fill="#35556d">Timer</text>
+  <rect x="394" y="176" width="128" height="82" rx="18" fill="#fff2ea" stroke="#e0b59c" stroke-width="2"/>
+  <text x="420" y="221" font-family="IBM Plex Sans, Arial, sans-serif" font-size="18" font-weight="700" fill="#9a5a0a">Requests</text>
+  <rect x="556" y="176" width="96" height="82" rx="18" fill="#e8f5ee" stroke="#b8d8c6" stroke-width="2"/>
+  <text x="574" y="212" font-family="IBM Plex Sans, Arial, sans-serif" font-size="18" font-weight="700" fill="#1f6a43">Write</text>
+  <text x="572" y="234" font-family="IBM Plex Sans, Arial, sans-serif" font-size="13" fill="#466b58">results</text>
+  <path d="M198 217h26M360 217h26M522 217h22" stroke="#0f5f8c" stroke-width="8" stroke-linecap="round"/>
+  <path d="M604 276v44H134v-44" fill="none" stroke="#a61b39" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="250" y="344" font-family="IBM Plex Sans, Arial, sans-serif" font-size="14" fill="#a61b39">Repeat with warm-up, steady-state timing, and structured metrics capture.</text>
+</svg>

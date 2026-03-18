@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Dict
 
@@ -12,14 +13,17 @@ from learning_agent.models import (
     CheckpointState,
     ConceptCardPayload,
     EvidenceQuestionPayload,
+    FigureAsset,
     GateSession,
     Ledger,
+    LearningBundle,
     LearningQuestion,
     LearningSession,
     ObservationRecord,
     QuestionAttempt,
     RawQuestionBankPayload,
     RawLearningQuestion,
+    ReadingSection,
     ReflectionRecord,
     TaskSession,
     VerificationRecord,
@@ -131,10 +135,16 @@ class LearningController:
             raise LearningAgentError(
                 "Learning Assist classified question bank failed validation: " + "; ".join(question_errors)
             )
+        concept_cards = self._decorate_concept_cards(concept_payload.concept_cards)
+        figures = self._build_figure_assets(week_spec, concept_cards, classified_payload.questions)
+        reading_sections = self._build_reading_sections(week_spec, concept_cards, figures, classified_payload.questions)
+        questions = self._link_questions_to_content(classified_payload.questions, concept_cards, reading_sections)
         session = LearningSession(
             week=week_spec.number,
-            concept_cards=concept_payload.concept_cards,
-            questions=classified_payload.questions,
+            concept_cards=concept_cards,
+            figures=figures,
+            reading_sections=reading_sections,
+            questions=questions,
         )
         self.state.save_learning(session)
         self._sync_learning_progress(ledger, session)
@@ -201,7 +211,9 @@ class LearningController:
                 payload = provider.generate_evidence_questions(week_spec, observation, session)
                 if not isinstance(payload, EvidenceQuestionPayload):
                     payload = EvidenceQuestionPayload.model_validate(payload)
-                session.questions.extend(payload.questions)
+                session.questions.extend(
+                    self._link_questions_to_content(payload.questions, session.concept_cards, session.reading_sections)
+                )
                 self.state.save_learning(session)
         self.state.save_ledger(ledger)
         return ledger
@@ -276,12 +288,276 @@ class LearningController:
             return None
         return self.state.load_learning()
 
+    def ensure_learning_assist(self):
+        session = self.get_learning_session()
+        if session is None:
+            return self.generate_learning_assist()
+
+        ledger = self.state.load_ledger()
+        if session.week != ledger.state.current_week:
+            return self.generate_learning_assist()
+
+        return session
+
+    def get_learning_bundle(self):
+        session = self.get_learning_session()
+        if session is None:
+            return None
+        return LearningBundle(
+            week=session.week,
+            concept_cards=session.concept_cards,
+            figures=session.figures,
+            reading_sections=session.reading_sections,
+            questions=session.questions,
+            attempts=session.attempts,
+        )
+
     def _load_current_week_spec(self, ledger: Ledger) -> WeekSpec:
         _, weeks = load_curriculum(self.roadmap_path, self.config.target_repo_path)
         return get_week_spec(weeks, ledger.state.current_week)
 
     def _provider(self):
         return get_provider(self.config)
+
+    def _decorate_concept_cards(self, cards: list) -> list:
+        decorated = []
+        for index, card in enumerate(cards, start=1):
+            title = card.title.strip() or self._humanize_label(card.concept)
+            card_id = card.id.strip() or self._slugify(card.concept or title or f"concept-{index}")
+            image_key = self._image_key_for_text(f"{card.concept} {card.explanation} {card.why_it_matters}")
+            decorated.append(
+                card.model_copy(
+                    update={
+                        "id": card_id,
+                        "title": title,
+                        "image_path": self._image_path_for_key(image_key),
+                        "image_alt": self._figure_asset_for_key(image_key).alt_text,
+                    }
+                )
+            )
+        return decorated
+
+    def _build_figure_assets(
+        self,
+        week_spec: WeekSpec,
+        concept_cards: list,
+        questions: list[LearningQuestion],
+    ) -> list[FigureAsset]:
+        figure_keys: list[str] = []
+        for card in concept_cards:
+            key = self._key_from_image_path(card.image_path)
+            if key:
+                self._append_if_missing(figure_keys, key)
+
+        combined_text = " ".join(question.prompt_text for question in questions).lower()
+        if "server.py" in " ".join(week_spec.required_files) or "api" in combined_text:
+            self._append_if_missing(figure_keys, "server_architecture")
+        if any(keyword in combined_text for keyword in ("benchmark", "latency", "throughput", "tokens per second", "tps")):
+            self._append_if_missing(figure_keys, "benchmark_flow")
+            self._append_if_missing(figure_keys, "latency_throughput")
+
+        return [self._figure_asset_for_key(key) for key in figure_keys]
+
+    def _build_reading_sections(
+        self,
+        week_spec: WeekSpec,
+        concept_cards: list,
+        figures: list[FigureAsset],
+        questions: list[LearningQuestion],
+    ) -> list[ReadingSection]:
+        sections: list[ReadingSection] = []
+        figure_ids = {figure.id for figure in figures}
+
+        sections.append(
+            ReadingSection(
+                id="week_map",
+                title="How This Week Works",
+                body_markdown=(
+                    f"**Goal:** {week_spec.goal}\n\n"
+                    f"Work inside **{', '.join(week_spec.active_dirs) or '(no active dirs)'}** and produce:\n- "
+                    + "\n- ".join(week_spec.required_files or ["(none)"])
+                    + "\n\nTreat the learning material as an open-book reference for the questions on the right. "
+                    "You should be able to point from each answer back to a specific concept, file, or measurement."
+                ),
+                figure_ids=["server_architecture"] if "server_architecture" in figure_ids else [],
+                related_concept_ids=[card.id for card in concept_cards],
+            )
+        )
+
+        for card in concept_cards:
+            figure_id = self._key_from_image_path(card.image_path)
+            sections.append(
+                ReadingSection(
+                    id=f"section-{card.id}",
+                    title=card.title,
+                    body_markdown=self._reading_markdown_for_card(card, week_spec),
+                    figure_ids=[figure_id] if figure_id in figure_ids else [],
+                    related_concept_ids=[card.id],
+                )
+            )
+
+        sections.append(
+            ReadingSection(
+                id="build_artifacts",
+                title="What You Need To Build",
+                body_markdown=(
+                    "Keep your implementation answers grounded in the actual files and tasks for this week.\n\n"
+                    "Tasks:\n- "
+                    + "\n- ".join(week_spec.tasks or ["Translate the goal into working artifacts."])
+                    + "\n\nRequired files:\n- "
+                    + "\n- ".join(week_spec.required_files or ["(none)"])
+                ),
+                figure_ids=[figure_id for figure_id in ("server_architecture", "benchmark_flow") if figure_id in figure_ids],
+            )
+        )
+
+        if week_spec.required_metrics:
+            sections.append(
+                ReadingSection(
+                    id="measure_and_verify",
+                    title="How To Measure And Verify",
+                    body_markdown=(
+                        "Measurement is part of the assignment, not an afterthought.\n\n"
+                        "Required metrics:\n- "
+                        + "\n- ".join(week_spec.required_metrics)
+                        + "\n\nWhen you answer a question about performance, explain **what was measured**, "
+                        "**how it was measured**, and **why the evidence is trustworthy**."
+                    ),
+                    figure_ids=[figure_id for figure_id in ("latency_throughput", "benchmark_flow") if figure_id in figure_ids],
+                )
+            )
+
+        linked_questions = self._link_questions_to_content(questions, concept_cards, sections)
+        by_section: dict[str, list[str]] = {section.id: [] for section in sections}
+        for question in linked_questions:
+            for section_id in question.related_section_ids:
+                if section_id in by_section:
+                    by_section[section_id].append(question.id)
+
+        return [
+            section.model_copy(update={"related_question_ids": by_section.get(section.id, [])})
+            for section in sections
+        ]
+
+    def _link_questions_to_content(
+        self,
+        questions: list[LearningQuestion],
+        concept_cards: list,
+        reading_sections: list[ReadingSection],
+    ) -> list[LearningQuestion]:
+        linked_questions: list[LearningQuestion] = []
+        for question in questions:
+            related_concept_ids = [card.id for card in concept_cards if self._question_matches_card(question, card)]
+            related_section_ids = [
+                section.id
+                for section in reading_sections
+                if set(section.related_concept_ids).intersection(related_concept_ids)
+            ]
+
+            prompt_lower = question.prompt_text.lower()
+            if question.type == "implementation":
+                self._append_if_missing(related_section_ids, "build_artifacts")
+            if any(token in prompt_lower for token in ("latency", "throughput", "tokens per second", "tps", "benchmark")):
+                self._append_if_missing(related_section_ids, "measure_and_verify")
+            if not related_section_ids:
+                self._append_if_missing(related_section_ids, "week_map")
+
+            linked_questions.append(
+                question.model_copy(
+                    update={
+                        "related_concept_ids": related_concept_ids,
+                        "related_section_ids": related_section_ids,
+                    }
+                )
+            )
+        return linked_questions
+
+    def _question_matches_card(self, question: LearningQuestion, card) -> bool:
+        card_tokens = self._match_tokens(f"{card.id} {card.concept} {card.title}")
+        question_tokens = self._match_tokens(
+            f"{question.id} {question.prompt_text} {' '.join(str(value) for value in question.roadmap_anchor.values())}"
+        )
+        return bool(card_tokens.intersection(question_tokens))
+
+    def _reading_markdown_for_card(self, card, week_spec: WeekSpec) -> str:
+        blocks = [
+            card.explanation.strip(),
+            f"**Why it matters:** {card.why_it_matters.strip()}",
+            f"**Common mistake:** {card.common_mistake.strip()}",
+        ]
+        if card.quick_check_question:
+            blocks.append(f"**Quick check:** {card.quick_check_question.strip()}")
+        if week_spec.required_files:
+            blocks.append("This concept shows up directly in: " + ", ".join(week_spec.required_files) + ".")
+        return "\n\n".join(blocks)
+
+    def _figure_asset_for_key(self, key: str) -> FigureAsset:
+        library = {
+            "prefill_decode": FigureAsset(
+                id="prefill_decode",
+                title="Prefill vs Decode",
+                image_path="/assets/illustrations/prefill-decode.svg",
+                alt_text="Diagram comparing prompt prefill with stepwise decode generation.",
+                caption="Prefill processes the whole prompt together; decode emits one token at a time.",
+            ),
+            "latency_throughput": FigureAsset(
+                id="latency_throughput",
+                title="Latency vs Throughput",
+                image_path="/assets/illustrations/latency-throughput.svg",
+                alt_text="Curve showing latency rising as throughput approaches saturation.",
+                caption="The knee of the curve is where throughput gains begin to cost too much latency.",
+            ),
+            "server_architecture": FigureAsset(
+                id="server_architecture",
+                title="Inference Server Architecture",
+                image_path="/assets/illustrations/server-architecture.svg",
+                alt_text="Request flow from API entry through queue, model runtime, and metrics.",
+                caption="Week 1 is about understanding the path from HTTP request to generated output and measurement.",
+            ),
+            "benchmark_flow": FigureAsset(
+                id="benchmark_flow",
+                title="Benchmark Flow",
+                image_path="/assets/illustrations/benchmark-flow.svg",
+                alt_text="Loop showing prompts, timed requests, metrics calculation, and result logging.",
+                caption="A clean benchmark loop separates generation, timing, and evidence capture.",
+            ),
+        }
+        return library[key]
+
+    def _image_key_for_text(self, text: str) -> str:
+        lower = text.lower()
+        if "prefill" in lower or "decode" in lower:
+            return "prefill_decode"
+        if "latency" in lower or "throughput" in lower or "tokens per second" in lower or "tps" in lower:
+            return "latency_throughput"
+        if "benchmark" in lower or "metric" in lower:
+            return "benchmark_flow"
+        return "server_architecture"
+
+    def _image_path_for_key(self, key: str) -> str:
+        return self._figure_asset_for_key(key).image_path
+
+    def _key_from_image_path(self, image_path: str | None) -> str | None:
+        if not image_path:
+            return None
+        return Path(image_path).stem.replace("-", "_")
+
+    def _humanize_label(self, value: str) -> str:
+        return " ".join(part.capitalize() for part in value.replace("-", "_").split("_") if part)
+
+    def _slugify(self, value: str) -> str:
+        slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+        return slug or "content"
+
+    def _append_if_missing(self, items: list[str], value: str) -> None:
+        if value not in items:
+            items.append(value)
+
+    def _match_tokens(self, text: str) -> set[str]:
+        tokens = {token for token in re.split(r"[^a-z0-9]+", text.lower()) if len(token) >= 4}
+        if "tps" in text.lower():
+            tokens.add("tokens")
+        return tokens
 
     def _approval_blockers(self, ledger: Ledger) -> list[str]:
         blockers = []

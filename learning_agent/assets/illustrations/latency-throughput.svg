@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 420" role="img" aria-labelledby="title desc">
+  <title id="title">Latency versus Throughput</title>
+  <desc id="desc">A chart showing latency rising sharply after the throughput knee.</desc>
+  <rect width="720" height="420" rx="28" fill="#f8fbfd"/>
+  <rect x="24" y="24" width="672" height="372" rx="24" fill="#ffffff" stroke="#c7d2da" stroke-width="2"/>
+  <text x="48" y="70" font-family="IBM Plex Sans, Arial, sans-serif" font-size="28" font-weight="700" fill="#0b4667">Latency vs Throughput</text>
+  <text x="48" y="98" font-family="IBM Plex Sans, Arial, sans-serif" font-size="16" fill="#5d6b79">Higher concurrency boosts throughput until the latency curve bends upward.</text>
+  <line x1="100" y1="330" x2="620" y2="330" stroke="#6b7b8a" stroke-width="3"/>
+  <line x1="100" y1="330" x2="100" y2="120" stroke="#6b7b8a" stroke-width="3"/>
+  <text x="630" y="336" font-family="IBM Plex Sans, Arial, sans-serif" font-size="14" fill="#5d6b79">Throughput</text>
+  <text x="54" y="124" font-family="IBM Plex Sans, Arial, sans-serif" font-size="14" fill="#5d6b79">Latency</text>
+  <path d="M120 300 C220 280, 320 250, 400 210 S560 120, 610 90" fill="none" stroke="#0f5f8c" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="430" cy="195" r="12" fill="#a61b39"/>
+  <text x="448" y="198" font-family="IBM Plex Sans, Arial, sans-serif" font-size="14" fill="#a61b39">Knee of the curve</text>
+  <rect x="120" y="348" width="150" height="30" rx="15" fill="#dcebf4"/>
+  <text x="136" y="368" font-family="IBM Plex Sans, Arial, sans-serif" font-size="13" fill="#0b4667">Interactive serving</text>
+  <rect x="286" y="348" width="160" height="30" rx="15" fill="#e8f5ee"/>
+  <text x="304" y="368" font-family="IBM Plex Sans, Arial, sans-serif" font-size="13" fill="#1f6a43">Balanced production</text>
+  <rect x="462" y="348" width="130" height="30" rx="15" fill="#fff2ea"/>
+  <text x="482" y="368" font-family="IBM Plex Sans, Arial, sans-serif" font-size="13" fill="#9a5a0a">Batch jobs</text>
+</svg>

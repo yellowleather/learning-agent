@@ -333,6 +333,17 @@ def test_learning_assist_flow_records_evidence_and_reflection(monkeypatch, tmp_p
     session = controller.generate_learning_assist()
     assert session.week == 1
     assert len(session.questions) == 50
+    assert session.figures
+    assert session.reading_sections
+    assert session.concept_cards[0].image_path == "/assets/illustrations/prefill-decode.svg"
+    assert session.reading_sections[0].title == "How This Week Works"
+    assert "section-prefill-vs-decode" in [section.id for section in session.reading_sections]
+
+    bundle = controller.get_learning_bundle()
+    assert bundle is not None
+    assert bundle.figures
+    assert bundle.reading_sections
+    assert bundle.questions[0].related_section_ids
 
     controller.answer_learning_question("core_prefill_decode", "Prefill processes the prompt once.")
     result = controller.answer_learning_question("impl_measure_tokens", "Count tokens and divide by decode time.")

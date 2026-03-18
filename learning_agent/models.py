@@ -65,11 +65,16 @@ class ReflectionRecord(StrictModel):
 
 
 class ConceptCard(StrictModel):
+    id: str = ""
     concept: str
+    title: str = ""
     explanation: str
     why_it_matters: str
     common_mistake: str
     quick_check_question: Optional[str] = None
+    image_path: Optional[str] = None
+    image_alt: str = ""
+    related_section_ids: List[str] = Field(default_factory=list)
 
 
 class RawLearningQuestion(StrictModel):
@@ -87,6 +92,8 @@ class LearningQuestion(StrictModel):
     scoring_rubric: List[str] = Field(default_factory=list)
     roadmap_anchor: Dict[str, Any] = Field(default_factory=dict)
     observation_required: bool = False
+    related_concept_ids: List[str] = Field(default_factory=list)
+    related_section_ids: List[str] = Field(default_factory=list)
 
 
 class QuestionScore(StrictModel):
@@ -127,9 +134,37 @@ class EvidenceQuestionPayload(StrictModel):
     questions: List[LearningQuestion] = Field(default_factory=list)
 
 
+class FigureAsset(StrictModel):
+    id: str
+    title: str
+    image_path: str
+    alt_text: str
+    caption: str
+
+
+class ReadingSection(StrictModel):
+    id: str
+    title: str
+    body_markdown: str
+    figure_ids: List[str] = Field(default_factory=list)
+    related_question_ids: List[str] = Field(default_factory=list)
+    related_concept_ids: List[str] = Field(default_factory=list)
+
+
 class LearningSession(StrictModel):
     week: int
     concept_cards: List[ConceptCard] = Field(default_factory=list)
+    figures: List[FigureAsset] = Field(default_factory=list)
+    reading_sections: List[ReadingSection] = Field(default_factory=list)
+    questions: List[LearningQuestion] = Field(default_factory=list)
+    attempts: List[QuestionAttempt] = Field(default_factory=list)
+
+
+class LearningBundle(StrictModel):
+    week: int
+    concept_cards: List[ConceptCard] = Field(default_factory=list)
+    figures: List[FigureAsset] = Field(default_factory=list)
+    reading_sections: List[ReadingSection] = Field(default_factory=list)
     questions: List[LearningQuestion] = Field(default_factory=list)
     attempts: List[QuestionAttempt] = Field(default_factory=list)
 

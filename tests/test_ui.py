@@ -144,6 +144,15 @@ class FakeProvider:
         return {"week": week_spec.number, "questions": []}
 
 
+class CountingProvider(FakeProvider):
+    def __init__(self):
+        self.learning_generate_calls = 0
+
+    def generate_raw_question_bank(self, week_spec, ledger_state):
+        self.learning_generate_calls += 1
+        return super().generate_raw_question_bank(week_spec, ledger_state)
+
+
 def write_config(tmp_path):
     config = {
         "provider": "openai",
@@ -201,10 +210,14 @@ def test_render_page_shows_uninitialized_state(monkeypatch, tmp_path):
     assert "No ledger loaded yet" in page
     assert 'href="/favicon.ico"' in page
     assert 'src="/assets/icon.png"' in page
-    assert "About This Platform" in page
-    assert "UI Walkthrough Tour" in page
+    assert "How It Works" in page
+    assert "Quick Start" in page
+    assert "What You Will See" in page
+    assert "sidebar-edge-toggle" in page
+    assert "left-sidebar" in page
     assert "senior software engineer" in page
-    assert "Approval Blockers" in page
+    assert "Learn:" in page
+    assert "Approve:" in page
 
 
 def test_run_action_init_creates_week_one(monkeypatch, tmp_path):
@@ -231,10 +244,64 @@ def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
     monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: FakeProvider())
 
     assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
-    assert run_action("learning_generate", {"action": ["learning_generate"]}) == "Generated Learning Assist for Week 1."
 
     page = render_page()
-    assert "Learning Assist" in page
+    assert "Learn" in page
+    assert "Build" in page
+    assert "Verify" in page
+    assert "Approve" in page
+    assert "Concept Cards" in page
+    assert "Reading Material" in page
+    assert "Answer Question" in page
+    assert "open-book exam" in page
+    assert "/assets/illustrations/prefill-decode.svg" in page
     assert "core_prefill" in page
     assert "Record Observation" in page
     assert "Record Reflection" in page
+    assert "Generate Learning Assist" not in page
+    assert "Open Learn" in page
+    assert "Concept Card Visibility" not in page
+    assert "Hide Concept Cards" not in page
+    assert page.index("Concept Cards") < page.index("Answer Question")
+    assert "Question 1 of 50" in page
+    assert "title='Previous Question'" in page
+    assert "title='Next Question'" in page
+    assert "question-nav-arrow" in page
+    assert "See Full Question List" in page
+    assert 'id="question-list-modal"' in page
+    assert "Full Question List" in page
+    assert "Correct So Far" in page
+    assert "0/2 baseline questions passed" in page
+    assert 'role="progressbar"' in page
+    assert "/?question_id=core_prefill#question-workspace" not in page
+    assert "/?question_id=core_prefill" in page
+    assert "question-list-panel" not in page
+    assert "data-question-step-link" in page
+    assert "data-question-modal-link" in page
+    assert "data-question-modal-open" in page
+    assert "data-question-modal-close" in page
+    assert "data-learning-answer-form" in page
+    assert "data-learning-answer-textarea" in page
+    assert "data-draft-status" in page
+    assert "learning-agent-draft-week-" in page
+    assert "<summary>What A Good Answer Should Cover</summary>" in page
+    assert ".details-inline summary::before" in page
+
+
+def test_render_page_autoloads_learning_assist_only_once(monkeypatch, tmp_path):
+    write_config(tmp_path)
+    write_roadmap(tmp_path)
+    (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+    provider = CountingProvider()
+    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: provider)
+
+    assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
+
+    first_page = render_page()
+    second_page = render_page()
+
+    assert "Concept Cards" in first_page
+    assert "Answer Question" in second_page
+    assert provider.learning_generate_calls == 1

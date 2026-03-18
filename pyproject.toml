@@ -29,7 +29,7 @@ packages = [
 ]
 
 [tool.setuptools.package-data]
-learning_agent = ["prompts/*.md", "assets/*.png"]
+learning_agent = ["prompts/*.md", "assets/*.png", "assets/illustrations/*.svg"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
