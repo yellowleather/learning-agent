@@ -27,6 +27,7 @@ class Gates(StrictModel):
     socratic_check_passed: bool = False
     implementation_complete: bool = False
     verification_passed: bool = False
+    evidence_reliable: bool = False
     week_approved: bool = False
 
 
@@ -45,13 +46,91 @@ class VerificationRecord(StrictModel):
     summary: str
 
 
+class ObservationRecord(StrictModel):
+    command: str
+    artifact_path: str
+    prompt_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    latency_p95_ms: Optional[float] = None
+    tokens_per_sec: Optional[float] = None
+    notes: str = ""
+    reliability: Literal["valid", "invalid_due_to_bug", "invalid_due_to_bad_measurement", "uncertain"] = "uncertain"
+
+
+class ReflectionRecord(StrictModel):
+    text: str
+    trustworthy: Optional[bool] = None
+    buggy: bool = False
+    next_fix: str = ""
+
+
+class ConceptCard(StrictModel):
+    concept: str
+    explanation: str
+    why_it_matters: str
+    common_mistake: str
+    quick_check_question: Optional[str] = None
+
+
+class LearningQuestion(StrictModel):
+    id: str
+    type: Literal["concept", "implementation", "evidence_based"]
+    scope: Literal["core", "adjacent", "later_week"]
+    depth: Literal["baseline", "deep", "stretch"]
+    prompt_text: str
+    scoring_rubric: List[str] = Field(default_factory=list)
+    roadmap_anchor: Dict[str, Any] = Field(default_factory=dict)
+    observation_required: bool = False
+
+
+class QuestionScore(StrictModel):
+    passed: bool
+    score_rationale: str
+    missing_concepts: List[str] = Field(default_factory=list)
+
+
+class QuestionAttempt(StrictModel):
+    question_id: str
+    answer: str
+    result: QuestionScore
+
+
+class LearningAssistPayload(StrictModel):
+    week: int
+    concept_cards: List[ConceptCard] = Field(default_factory=list)
+    questions: List[LearningQuestion] = Field(default_factory=list)
+
+
+class EvidenceQuestionPayload(StrictModel):
+    week: int
+    questions: List[LearningQuestion] = Field(default_factory=list)
+
+
+class LearningSession(StrictModel):
+    week: int
+    concept_cards: List[ConceptCard] = Field(default_factory=list)
+    questions: List[LearningQuestion] = Field(default_factory=list)
+    attempts: List[QuestionAttempt] = Field(default_factory=list)
+
+
+class CheckpointState(StrictModel):
+    id: str
+    title: str
+    description: str
+    status: Literal["not_started", "in_progress", "passed", "failed"]
+    reason: str = ""
+
+
 class ProgressState(StrictModel):
     current_week: int
     active_functional_dirs: List[str] = Field(default_factory=list)
+    learning_assist_enabled: bool = True
     gates: Gates = Field(default_factory=Gates)
     artifacts: ArtifactState = Field(default_factory=ArtifactState)
     metrics: MetricsState = Field(default_factory=MetricsState)
     verification: Optional[VerificationRecord] = None
+    observation: Optional[ObservationRecord] = None
+    reflection: Optional[ReflectionRecord] = None
 
 
 class Ledger(StrictModel):

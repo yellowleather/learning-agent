@@ -7,7 +7,19 @@ from typing import Type, TypeVar
 from pydantic import BaseModel
 
 from learning_agent.errors import LearningAgentError
-from learning_agent.models import GateQuestion, GateResult, GeneratedTask, ProgressState, WeekSpec
+from learning_agent.models import (
+    EvidenceQuestionPayload,
+    GateQuestion,
+    GateResult,
+    GeneratedTask,
+    LearningAssistPayload,
+    LearningQuestion,
+    LearningSession,
+    ObservationRecord,
+    ProgressState,
+    QuestionScore,
+    WeekSpec,
+)
 from learning_agent.prompts import load_prompt
 from learning_agent.providers.base import LLMProvider
 
@@ -18,6 +30,23 @@ ResponseModelT = TypeVar("ResponseModelT", bound=BaseModel)
 class OpenAIProvider(LLMProvider):
     def __init__(self, model: str):
         self.model = model.strip()
+
+    def generate_learning_assist(self, week_spec: WeekSpec, ledger_state: ProgressState) -> LearningAssistPayload:
+        system_prompt = load_prompt("mentor.md")
+        user_prompt = (
+            "Create the current week's Learning Assist content.\n"
+            "Use only the provided current-week context and ledger state. Output JSON only.\n"
+            "Return 3-6 concept cards and a sizable question bank. Include core baseline questions that cover the week,\n"
+            "plus some deeper or adjacent questions. Evidence-based questions should be marked with observation_required=true.\n"
+            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n"
+            f"Current ledger state:\n{ledger_state.model_dump_json(indent=2)}\n"
+            'Required JSON shape: {"week": 1, "concept_cards": [{"concept": "...", "explanation": "...", '
+            '"why_it_matters": "...", "common_mistake": "...", "quick_check_question": "..."}], '
+            '"questions": [{"id": "core_latency_1", "type": "concept", "scope": "core", "depth": "baseline", '
+            '"prompt_text": "...", "scoring_rubric": ["..."], "roadmap_anchor": {"week": 1}, '
+            '"observation_required": false}]}'
+        )
+        return self._completion_as_model(system_prompt, user_prompt, LearningAssistPayload)
 
     def generate_gate_question(self, week_spec: WeekSpec) -> GateQuestion:
         system_prompt = load_prompt("mentor.md")
@@ -53,6 +82,46 @@ class OpenAIProvider(LLMProvider):
             '"verification_expectations": ["..."], "summary": "..."}'
         )
         return self._completion_as_model(system_prompt, user_prompt, GeneratedTask)
+
+    def score_learning_question(
+        self,
+        week_spec: WeekSpec,
+        question: LearningQuestion,
+        answer: str,
+        observation: ObservationRecord | None,
+    ) -> QuestionScore:
+        system_prompt = load_prompt("mentor.md")
+        observation_json = observation.model_dump_json(indent=2) if observation is not None else "null"
+        user_prompt = (
+            "Evaluate whether the answer passes the current learning question.\n"
+            "Use only the current-week context, the question rubric, and the observation if one is provided. Output JSON only.\n"
+            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n"
+            f"Question:\n{question.model_dump_json(indent=2)}\n"
+            f"Observation:\n{observation_json}\n"
+            f"Answer:\n{answer}\n"
+            'Required JSON shape: {"passed": true, "score_rationale": "...", "missing_concepts": ["..."]}'
+        )
+        return self._completion_as_model(system_prompt, user_prompt, QuestionScore)
+
+    def generate_evidence_questions(
+        self,
+        week_spec: WeekSpec,
+        observation: ObservationRecord,
+        learning_session: LearningSession,
+    ) -> EvidenceQuestionPayload:
+        system_prompt = load_prompt("mentor.md")
+        user_prompt = (
+            "Create 2-4 evidence-based follow-up questions grounded in the provided observation.\n"
+            "Use only the current-week context and the observed result. Output JSON only.\n"
+            "All generated questions must have type='evidence_based', scope='core' or 'adjacent', and observation_required=true.\n"
+            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n"
+            f"Observation:\n{observation.model_dump_json(indent=2)}\n"
+            f"Existing learning session:\n{learning_session.model_dump_json(indent=2)}\n"
+            'Required JSON shape: {"week": 1, "questions": [{"id": "evidence_prefill_1", "type": "evidence_based", '
+            '"scope": "core", "depth": "baseline", "prompt_text": "...", "scoring_rubric": ["..."], '
+            '"roadmap_anchor": {"week": 1}, "observation_required": true}]}'
+        )
+        return self._completion_as_model(system_prompt, user_prompt, EvidenceQuestionPayload)
 
     def _completion_as_model(
         self, system_prompt: str, user_prompt: str, response_model: Type[ResponseModelT]

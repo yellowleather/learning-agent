@@ -7,7 +7,16 @@ from typing import Optional, Type, TypeVar
 from pydantic import BaseModel
 
 from learning_agent.errors import LearningAgentError
-from learning_agent.models import AppConfig, GateSession, GeneratedTask, Ledger, TaskSession, VerificationRecord, WeekSpec
+from learning_agent.models import (
+    AppConfig,
+    GateSession,
+    GeneratedTask,
+    Ledger,
+    LearningSession,
+    TaskSession,
+    VerificationRecord,
+    WeekSpec,
+)
 
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -30,6 +39,10 @@ class StateStore:
     @property
     def task_path(self) -> Path:
         return self.state_dir / "current_task.json"
+
+    @property
+    def learning_path(self) -> Path:
+        return self.state_dir / "current_learning.json"
 
     def ensure_state_dir(self) -> None:
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -77,13 +90,20 @@ class StateStore:
         self.ensure_state_dir()
         self._write_json(self.task_path, task_session.model_dump(mode="json"))
 
+    def load_learning(self) -> LearningSession:
+        return self._load_model(self.learning_path, LearningSession)
+
+    def save_learning(self, learning_session: LearningSession) -> None:
+        self.ensure_state_dir()
+        self._write_json(self.learning_path, learning_session.model_dump(mode="json"))
+
     def update_task_verification(self, record: VerificationRecord) -> None:
         task_session = self.load_task()
         task_session.verification = record
         self.save_task(task_session)
 
     def clear_ephemeral_state(self) -> None:
-        for path in (self.gate_path, self.task_path):
+        for path in (self.gate_path, self.task_path, self.learning_path):
             if path.exists():
                 path.unlink()
 
