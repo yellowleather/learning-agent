@@ -12,6 +12,20 @@ This is a focused design doc, narrower than the broader modernization plan in:
 
 It is intended to be implementation-oriented and directly actionable.
 
+## 1.1 Current Status
+
+The redesign described here is now implemented in the current server-rendered UI.
+
+The right sidebar now:
+
+- behaves like a multi-session week chat,
+- stores chat sessions in browser-local state per week,
+- auto-titles chats from the first user message,
+- no longer visibly emphasizes the active `Learn` question,
+- uses week-scoped context by default instead of silently grounding on the selected question.
+
+This document remains useful as the design record for that shift, but it should also reflect the current shipped behavior.
+
 ## 2. Current Problem
 
 The current right sidebar in:
@@ -88,7 +102,7 @@ The top of the sidebar should include a compact session switcher:
 - current week's chat sessions,
 - active session highlight,
 - `New Chat` action,
-- delete action per session or per active session.
+- delete action for the active session.
 
 The session list should feel lightweight, not card-heavy.
 
@@ -143,7 +157,8 @@ The sidebar should support the following flow.
 
 - the user can delete a chat session,
 - deleting one session does not affect other sessions for the same week,
-- if the active session is deleted, the UI should choose the next most recent session or create a fresh empty one.
+- if the active session is deleted, the UI should choose the next most recent session when one exists,
+- if no sessions remain, the sidebar returns to the empty new-chat state until the user creates another chat.
 
 ### 6.4 Messaging
 
@@ -193,7 +208,7 @@ If a future version wants explicit question grounding, it should be added as an 
 
 Chat sessions should be stored browser-locally per week.
 
-Recommended local structure:
+Conceptually, the state per week looks like:
 
 ```json
 {
@@ -215,6 +230,11 @@ Recommended local structure:
 ```
 
 This is a browser-state model, not ledger state.
+
+In the current implementation, this state is split across browser-local keys:
+
+- one per-week key for the session bundle,
+- one per-week key for per-session drafts.
 
 Requirements:
 
@@ -238,7 +258,9 @@ The backend contract should remain lightweight:
 - keep `message`,
 - keep `history`,
 - keep `current_step`,
-- keep `selected_question_id` optional, but treat it as unused by default for chat grounding.
+- keep `selected_question_id` optional for compatibility, but treat it as unused by default for chat grounding.
+
+The current chat UI no longer includes `selected_question_id` in normal topic-chat requests.
 
 The controller should assemble week-scoped context by default and avoid silently anchoring the chat to the selected `Learn` question.
 
@@ -292,6 +314,23 @@ That means:
 - keep the current server-rendered UI as the implementation surface for this version.
 
 This document should be treated as the source of truth for the next right-sidebar redesign pass.
+
+### 13.1 Implemented Notes
+
+The current implementation in:
+
+- [ui.py](/Users/prakhar/learning_agent/learning_agent/ui.py)
+- [controller.py](/Users/prakhar/learning_agent/learning_agent/controller.py)
+
+currently behaves as follows:
+
+- the right sidebar shows a minimal week header, session list, transcript, and composer,
+- `New Chat` creates an empty session immediately,
+- the active chat can be deleted with a single delete action,
+- if all chats are deleted, the sidebar returns to the empty state rather than auto-creating a replacement session,
+- starter prompts are rendered as clickable suggestions,
+- the backend still accepts `selected_question_id`, but the default chat flow does not use it,
+- week-scoped context includes week structure, progress, blockers, and available learning material, but not selected-question content by default.
 
 ## 14. Test Scenarios
 
