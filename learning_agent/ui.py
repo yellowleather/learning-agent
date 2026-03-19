@@ -6,7 +6,7 @@ import re
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 from urllib.parse import parse_qs, quote_plus, urlparse
 
 from learning_agent.config import load_config
@@ -56,6 +56,23 @@ def build_handler():
 
         def do_POST(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
+            if parsed.path == "/api/topic-chat":
+                length = int(self.headers.get("Content-Length", "0"))
+                raw_body = self.rfile.read(length).decode("utf-8") if length else "{}"
+                try:
+                    payload = json.loads(raw_body or "{}")
+                except json.JSONDecodeError as exc:
+                    self._send_json({"error": f"Invalid JSON body: {exc.msg}"}, status=HTTPStatus.BAD_REQUEST)
+                    return
+
+                try:
+                    response = run_topic_chat(payload)
+                    self._send_json(response)
+                except LearningAgentError as exc:
+                    self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                except Exception as exc:  # pragma: no cover
+                    self._send_json({"error": f"Unexpected error: {exc}"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
             if parsed.path != "/action":
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return
@@ -100,6 +117,14 @@ def build_handler():
             self.send_response(HTTPStatus.SEE_OTHER)
             self.send_header("Location", location)
             self.end_headers()
+
+        def _send_json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
+            encoded = json.dumps(payload).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
 
         def _send_asset(self, path: Path, content_type: str) -> None:
             try:
@@ -234,6 +259,25 @@ def run_action(action: str, form: Dict[str, list[str]]) -> str:
     raise LearningAgentError(f"Unknown action: {action}")
 
 
+def run_topic_chat(payload: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise LearningAgentError("Topic chat request must be a JSON object.")
+
+    history = payload.get("history") or []
+    if not isinstance(history, list):
+        raise LearningAgentError("Topic chat history must be a list.")
+
+    current_step = str(payload.get("current_step") or "").strip()
+    selected_question_id = str(payload.get("selected_question_id") or "").strip() or None
+    message = str(payload.get("message") or "")
+    return get_controller().answer_topic_chat(
+        message=message,
+        history=history,
+        current_step=current_step,
+        selected_question_id=selected_question_id,
+    )
+
+
 def render_page(
     message: Optional[str] = None,
     error: Optional[str] = None,
@@ -297,10 +341,20 @@ def render_page(
       padding: 28px 20px calc(var(--course-bar-space) + 24px);
       transition: width 180ms ease, margin-left 180ms ease, margin-right 180ms ease;
     }}
-    body:not(.sidebar-collapsed) main {{
+    body.left-rail-open:not(.narrow-rails) main {{
       width: min(1320px, calc(100vw - var(--sidebar-width) - 72px));
       margin-left: calc(var(--sidebar-width) + 36px);
       margin-right: 36px;
+    }}
+    body.right-rail-open:not(.narrow-rails) main {{
+      width: min(1320px, calc(100vw - var(--sidebar-width) - 72px));
+      margin-left: 36px;
+      margin-right: calc(var(--sidebar-width) + 36px);
+    }}
+    body.left-rail-open.right-rail-open:not(.narrow-rails) main {{
+      width: min(1320px, calc(100vw - (var(--sidebar-width) * 2) - 108px));
+      margin-left: calc(var(--sidebar-width) + 28px);
+      margin-right: calc(var(--sidebar-width) + 28px);
     }}
     .brand {{
       display: inline-flex;
@@ -406,17 +460,32 @@ def render_page(
       display: grid;
       gap: 18px;
     }}
+    .brand {{
+      display: inline-flex;
+      align-items: start;
+      gap: 16px;
+      text-decoration: none;
+    }}
     .hero-copy {{
       display: grid;
-      gap: 14px;
+      gap: 18px;
     }}
     .hero-copy p {{
       margin: 0;
+    }}
+    .hero-support {{
+      max-width: 42rem;
     }}
     .hero-meta {{
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
+    }}
+    .hero-meta-primary {{
+      margin-top: 2px;
+    }}
+    .hero-meta-secondary {{
+      gap: 8px;
     }}
     .pill {{
       border-radius: 999px;
@@ -424,6 +493,12 @@ def render_page(
       background: var(--surface-alt);
       color: var(--muted);
       font-size: 0.92rem;
+    }}
+    .pill.subtle {{
+      padding: 6px 10px;
+      background: rgba(255, 255, 255, 0.55);
+      border: 1px solid rgba(174, 190, 204, 0.55);
+      font-size: 0.84rem;
     }}
     .pill strong {{
       color: var(--text);
@@ -475,10 +550,9 @@ def render_page(
     .cta-card p {{
       margin: 0;
     }}
-    .sidebar-edge-toggle {{
+    .rail-edge-toggle, .sidebar-edge-toggle {{
       position: fixed;
       top: 18px;
-      left: calc(var(--sidebar-width) + 28px);
       z-index: 40;
       appearance: none;
       border: 1px solid var(--border);
@@ -492,7 +566,13 @@ def render_page(
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      transition: left 180ms ease, background 160ms ease, border-color 160ms ease;
+      transition: left 180ms ease, right 180ms ease, background 160ms ease, border-color 160ms ease;
+    }}
+    .rail-edge-toggle-left, .sidebar-edge-toggle {{
+      left: calc(var(--sidebar-width) + 28px);
+    }}
+    .rail-edge-toggle-right {{
+      right: calc(var(--sidebar-width) + 28px);
     }}
     .sidebar-icon {{
       position: relative;
@@ -500,6 +580,9 @@ def render_page(
       width: 20px;
       height: 18px;
       transition: transform 160ms ease;
+    }}
+    .rail-edge-toggle-right .sidebar-icon {{
+      transform: scaleX(-1);
     }}
     .sidebar-icon::before {{
       content: "";
@@ -525,19 +608,29 @@ def render_page(
       transform-origin: center;
       transition: transform 160ms ease, right 160ms ease, border-color 160ms ease;
     }}
-    body.sidebar-collapsed .sidebar-edge-toggle {{
+    body.left-rail-collapsed .rail-edge-toggle-left,
+    body.left-rail-collapsed .sidebar-edge-toggle {{
       left: 16px;
       background: rgba(220, 235, 244, 0.96);
       border-color: rgba(118, 156, 181, 0.65);
     }}
-    body.sidebar-collapsed .sidebar-icon::before {{
+    body.right-rail-collapsed .rail-edge-toggle-right {{
+      right: 16px;
+      background: rgba(220, 235, 244, 0.96);
+      border-color: rgba(118, 156, 181, 0.65);
+    }}
+    body.left-rail-collapsed .rail-edge-toggle-left .sidebar-icon::before,
+    body.left-rail-collapsed .sidebar-edge-toggle .sidebar-icon::before,
+    body.right-rail-collapsed .rail-edge-toggle-right .sidebar-icon::before {{
       opacity: 0.45;
     }}
-    body.sidebar-collapsed .sidebar-icon::after {{
+    body.left-rail-collapsed .rail-edge-toggle-left .sidebar-icon::after,
+    body.left-rail-collapsed .sidebar-edge-toggle .sidebar-icon::after,
+    body.right-rail-collapsed .rail-edge-toggle-right .sidebar-icon::after {{
       transform: translateY(-50%) rotate(225deg);
     }}
-    body:not(.sidebar-collapsed) .sidebar-edge-toggle:hover,
-    body.sidebar-collapsed .sidebar-edge-toggle:hover {{
+    .rail-edge-toggle:hover,
+    .sidebar-edge-toggle:hover {{
       background: rgba(234, 243, 248, 0.98);
       border-color: rgba(118, 156, 181, 0.75);
       align-items: center;
@@ -549,17 +642,22 @@ def render_page(
       display: grid;
       gap: 18px;
     }}
-    .left-sidebar {{
+    .app-rail, .left-sidebar, .right-sidebar {{
       position: fixed;
       top: 24px;
-      left: 20px;
       bottom: calc(var(--course-bar-space) + 20px);
       width: min(var(--sidebar-width), calc(100vw - 40px));
       overflow: hidden;
       z-index: 30;
       transition: opacity 180ms ease, transform 180ms ease;
     }}
-    .left-sidebar-scroll {{
+    .rail-left, .left-sidebar {{
+      left: 20px;
+    }}
+    .rail-right, .right-sidebar {{
+      right: 20px;
+    }}
+    .app-rail-scroll, .left-sidebar-scroll, .right-sidebar-scroll {{
       display: grid;
       gap: 18px;
       align-content: start;
@@ -567,19 +665,47 @@ def render_page(
       height: 100%;
       padding-right: 4px;
     }}
-    body.sidebar-collapsed .left-sidebar {{
+    .rail-right .app-rail-scroll, .right-sidebar-scroll {{
+      padding-left: 4px;
+      padding-right: 0;
+    }}
+    body.left-rail-collapsed .rail-left,
+    body.left-rail-collapsed .left-sidebar {{
       transform: translateX(calc(-100% - 32px));
       opacity: 0;
       pointer-events: none;
     }}
-    body.sidebar-collapsed .sidebar-edge-toggle {{
-      left: 16px;
+    body.right-rail-collapsed .rail-right,
+    body.right-rail-collapsed .right-sidebar {{
+      transform: translateX(calc(100% + 32px));
+      opacity: 0;
+      pointer-events: none;
     }}
     .left-sidebar .subgrid {{
       grid-template-columns: 1fr;
     }}
     .left-sidebar .subpanel {{
       min-width: 0;
+    }}
+    .right-sidebar .subgrid {{
+      grid-template-columns: 1fr;
+    }}
+    .right-sidebar .subpanel {{
+      min-width: 0;
+    }}
+    .rail-backdrop {{
+      position: fixed;
+      inset: 0;
+      z-index: 25;
+      background: rgba(23, 33, 43, 0.28);
+      backdrop-filter: blur(2px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms ease;
+    }}
+    body.narrow-rails.rail-overlay-active .rail-backdrop {{
+      opacity: 1;
+      pointer-events: auto;
     }}
     .summary-list li, .metric-list li, .gate-list li, .artifact-list li {{
       overflow-wrap: anywhere;
@@ -1180,11 +1306,137 @@ def render_page(
       font-size: 0.88rem;
       color: var(--muted);
     }}
+    .topic-chat-panel {{
+      display: grid;
+      gap: 18px;
+      min-height: 100%;
+    }}
+    .topic-chat-header {{
+      display: grid;
+      gap: 8px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(199, 210, 218, 0.75);
+    }}
+    .topic-chat-header p {{
+      margin: 0;
+    }}
+    .topic-chat-sessions {{
+      display: grid;
+      gap: 12px;
+    }}
+    .topic-chat-session-bar {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }}
+    .topic-chat-session-list {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }}
+    .topic-chat-session {{
+      appearance: none;
+      border: 1px solid rgba(199, 210, 218, 0.85);
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.7);
+      color: var(--text);
+      font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+      font-size: 0.88rem;
+      line-height: 1.2;
+      cursor: pointer;
+    }}
+    .topic-chat-session.active {{
+      background: rgba(220, 235, 244, 0.95);
+      border-color: rgba(118, 156, 181, 0.75);
+      color: var(--accent-dark);
+    }}
+    .topic-chat-thread {{
+      display: grid;
+      gap: 12px;
+      align-content: start;
+      min-height: 280px;
+      max-height: min(48vh, 620px);
+      overflow-y: auto;
+      padding-right: 4px;
+    }}
+    .topic-chat-empty {{
+      display: grid;
+      gap: 12px;
+      padding-top: 4px;
+    }}
+    .topic-chat-empty p {{
+      margin: 0;
+    }}
+    .topic-chat-suggestions {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }}
+    .topic-chat-suggestion {{
+      appearance: none;
+      border: 1px solid rgba(199, 210, 218, 0.9);
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.82);
+      color: var(--accent-dark);
+      font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+      font-size: 0.86rem;
+      cursor: pointer;
+    }}
+    .topic-chat-message {{
+      display: grid;
+      gap: 6px;
+      padding: 14px 16px;
+      max-width: calc(100% - 34px);
+      border-radius: 18px 18px 18px 8px;
+      background: rgba(255, 255, 255, 0.9);
+    }}
+    .topic-chat-message[data-role="user"] {{
+      justify-self: end;
+      border-radius: 18px 18px 8px 18px;
+      background: linear-gradient(180deg, rgba(220, 235, 244, 0.96), rgba(236, 244, 249, 0.94));
+    }}
+    .topic-chat-message[data-role="assistant"] {{
+      justify-self: start;
+      background: rgba(255, 255, 255, 0.92);
+    }}
+    .topic-chat-meta {{
+      font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-dark);
+    }}
+    .topic-chat-content {{
+      font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }}
+    .topic-chat-toolbar {{
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }}
+    .topic-chat-composer textarea {{
+      min-height: 100px;
+    }}
+    .topic-chat-status.error {{
+      color: var(--danger);
+    }}
+    .topic-chat-status.success {{
+      color: var(--success);
+    }}
     @media (max-width: 920px) {{
       .topbar, .workflow-shell, .subgrid, .help-grid, .action-grid, .learn-workspace, .concept-card-grid {{
         grid-template-columns: 1fr;
       }}
-      main, body:not(.sidebar-collapsed) main {{
+      main,
+      body.left-rail-open main,
+      body.right-rail-open main,
+      body.left-rail-open.right-rail-open main {{
         width: min(1320px, calc(100vw - 24px));
         margin-left: 12px;
         margin-right: 12px;
@@ -1215,27 +1467,43 @@ def render_page(
       .questions-column {{
         position: static;
       }}
-      .left-sidebar {{
+      .app-rail, .left-sidebar, .right-sidebar {{
         top: 12px;
-        left: 12px;
         bottom: calc(var(--course-bar-space) + 12px);
         width: min(92vw, 420px);
+        z-index: 45;
       }}
-      .left-sidebar-scroll {{
-        padding: 8px 2px 8px 0;
+      .rail-left, .left-sidebar {{
+        left: 12px;
       }}
-      .sidebar-edge-toggle {{
+      .rail-right, .right-sidebar {{
+        right: 12px;
+      }}
+      .app-rail-scroll, .left-sidebar-scroll, .right-sidebar-scroll {{
+        padding: 8px 2px;
+      }}
+      .rail-edge-toggle-left, .sidebar-edge-toggle {{
         left: 16px;
+      }}
+      .rail-edge-toggle-right {{
+        right: 16px;
+      }}
+      .topic-chat-thread {{
+        max-height: min(34vh, 360px);
       }}
     }}
   </style>
   {render_flash_cleanup_script(message, error)}
   {render_sidebar_script()}
   {render_summary_selection_script()}
+  {render_reading_scroll_script()}
   {render_question_navigation_script(status.get("week") if status else None, message)}
+  {render_topic_chat_script()}
 </head>
-<body>
-  <button id="sidebar-edge-toggle" class="sidebar-edge-toggle" type="button" data-sidebar-toggle aria-controls="left-sidebar" aria-pressed="false" aria-label="Hide sidebar" title="Hide sidebar"><span class="sidebar-icon" aria-hidden="true"><span></span><span></span></span></button>
+<body class="left-rail-open right-rail-open" data-initialized="{str(initialized).lower()}">
+  <button id="sidebar-edge-toggle" class="sidebar-edge-toggle rail-edge-toggle rail-edge-toggle-left" type="button" data-sidebar-toggle data-rail-toggle data-rail-side="left" aria-controls="left-sidebar" aria-pressed="false" aria-expanded="true" aria-label="Hide left sidebar" title="Hide left sidebar"><span class="sidebar-icon" aria-hidden="true"><span></span><span></span></span></button>
+  <button id="right-rail-toggle" class="rail-edge-toggle rail-edge-toggle-right" type="button" data-rail-toggle data-rail-side="right" aria-controls="right-sidebar" aria-pressed="false" aria-expanded="true" aria-label="Hide right sidebar" title="Hide right sidebar"><span class="sidebar-icon" aria-hidden="true"><span></span><span></span></span></button>
+  <div class="rail-backdrop" data-rail-backdrop hidden></div>
   <main>
     {render_header(status, initialized)}
     {render_notice(message, error)}
@@ -1243,7 +1511,8 @@ def render_page(
     {render_body(status, initialized, selected_question_id=selected_question_id)}
   </main>
   {render_course_bar(status, initialized)}
-  {render_sidebar(status, initialized)}
+  {render_left_sidebar(status, initialized)}
+  {render_right_sidebar(status, initialized)}
 </body>
 </html>"""
 
@@ -1285,21 +1554,25 @@ def render_header(status: Optional[dict], initialized: bool) -> str:
             <img class="brand-mark" src="/assets/icon.png" alt="Learning Agent icon">
             <span class="brand-copy">
               <span class="brand-label">Learning Agent</span>
-              <h1>Mentor Control Surface</h1>
+              <h1>Learn by Building Real Systems</h1>
             </span>
           </a>
-          <p class="muted">A calmer, guided workflow for the Phase 1 learning loop. The page now focuses on the current step instead of showing every control at once.</p>
-          <div class="hero-meta">
-            <span class="pill">Local only</span>
-            <span class="pill">Port {DEFAULT_UI_PORT}</span>
+          <p class="muted hero-support">Move through one unlocked week at a time. Study the concepts, answer the required questions, build the artifacts, and unlock the next step only when the work is solid.</p>
+          <div class="hero-meta hero-meta-primary">
+            <span class="pill">One week at a time</span>
+            <span class="pill">Real project artifacts</span>
             <span class="pill">Current step: <strong>{escape(current_label)}</strong></span>
+          </div>
+          <div class="hero-meta hero-meta-secondary" aria-label="Environment details">
+            <span class="pill subtle">Local only</span>
+            <span class="pill subtle">Port {DEFAULT_UI_PORT}</span>
           </div>
         </div>
         {render_state_summary(status, initialized)}
       </div>
       <div class="hero-card cta-card">
         <div class="stack">
-          <span class="brand-label">Next Action</span>
+          <span class="brand-label">Your Next Step</span>
           <h2>{escape(current_label)}</h2>
           <p class="muted">{escape(current_reason)}</p>
         </div>
@@ -1313,7 +1586,8 @@ def render_state_summary(status: Optional[dict], initialized: bool) -> str:
     if not initialized or not status:
         return """
         <div class="stack">
-          <h2>Current State</h2>
+          <span class="brand-label">This Week's Outcome</span>
+          <h2>Current Week</h2>
           <p class="muted">No ledger loaded yet. Initialize Week 1 to begin.</p>
         </div>
         """
@@ -1322,6 +1596,7 @@ def render_state_summary(status: Optional[dict], initialized: bool) -> str:
     complete_count = sum(1 for value in gates.values() if value)
     return (
         f"<div class='stack'>"
+        f"<span class='brand-label'>This Week's Outcome</span>"
         f"<h2>Week {status['week']}</h2>"
         f"<p><strong>{escape(status['title'])}</strong></p>"
         f"<p class='muted'>{escape(status['goal'])}</p>"
@@ -1385,32 +1660,115 @@ def render_sidebar_script() -> str:
     return """
   <script>
     (function () {
-      const storageKey = "learning-agent-sidebar-collapsed";
+      const legacyLeftKey = "learning-agent-sidebar-collapsed";
+      const railConfig = {
+        left: { storageKey: "learning-agent-left-rail-collapsed", fallbackKey: legacyLeftKey },
+        right: { storageKey: "learning-agent-right-rail-collapsed" },
+      };
+      const narrowQuery = window.matchMedia("(max-width: 920px)");
 
-      function setSidebarState(collapsed) {
-        document.body.classList.toggle("sidebar-collapsed", collapsed);
-        const buttons = document.querySelectorAll("[data-sidebar-toggle]");
-        buttons.forEach(function (button) {
-          button.setAttribute("aria-pressed", collapsed ? "true" : "false");
-          button.setAttribute("aria-expanded", collapsed ? "false" : "true");
-          const label = collapsed ? "Show sidebar" : "Hide sidebar";
+      function railButtons(side) {
+        return document.querySelectorAll("[data-rail-toggle][data-rail-side='" + side + "']");
+      }
+
+      function railLabel(side, collapsed) {
+        return (collapsed ? "Show " : "Hide ") + side + " sidebar";
+      }
+
+      function isCollapsed(side) {
+        return document.body.classList.contains(side + "-rail-collapsed");
+      }
+
+      function anyRailOpen() {
+        return document.body.classList.contains("left-rail-open") || document.body.classList.contains("right-rail-open");
+      }
+
+      function updateBackdrop() {
+        const isNarrow = narrowQuery.matches;
+        const active = isNarrow && anyRailOpen();
+        const backdrop = document.querySelector("[data-rail-backdrop]");
+        document.body.classList.toggle("narrow-rails", isNarrow);
+        document.body.classList.toggle("rail-overlay-active", active);
+        if (backdrop) {
+          backdrop.hidden = !active;
+        }
+      }
+
+      function setRailState(side, collapsed, persist) {
+        document.body.classList.toggle(side + "-rail-collapsed", collapsed);
+        document.body.classList.toggle(side + "-rail-open", !collapsed);
+        railButtons(side).forEach(function (button) {
+          const label = railLabel(side, collapsed);
+          button.setAttribute("aria-pressed", (!collapsed).toString());
+          button.setAttribute("aria-expanded", (!collapsed).toString());
           button.setAttribute("aria-label", label);
           button.setAttribute("title", label);
         });
+        if (persist) {
+          window.localStorage.setItem(railConfig[side].storageKey, String(collapsed));
+        }
+        updateBackdrop();
+      }
+
+      function closeOverlayRails() {
+        if (!narrowQuery.matches) {
+          return;
+        }
+        ["left", "right"].forEach(function (side) {
+          if (!isCollapsed(side)) {
+            setRailState(side, true, true);
+          }
+        });
+      }
+
+      function readStoredState(side) {
+        const config = railConfig[side];
+        const stored = window.localStorage.getItem(config.storageKey);
+        if (stored !== null) {
+          return stored === "true";
+        }
+        if (config.fallbackKey) {
+          const legacy = window.localStorage.getItem(config.fallbackKey);
+          if (legacy !== null) {
+            return legacy === "true";
+          }
+        }
+        return false;
       }
 
       window.addEventListener("DOMContentLoaded", function () {
-        const collapsed = window.localStorage.getItem(storageKey) === "true";
-        setSidebarState(collapsed);
+        ["left", "right"].forEach(function (side) {
+          setRailState(side, readStoredState(side), false);
+        });
 
-        const buttons = document.querySelectorAll("[data-sidebar-toggle]");
-        buttons.forEach(function (button) {
+        document.querySelectorAll("[data-rail-toggle]").forEach(function (button) {
           button.addEventListener("click", function () {
-            const nextCollapsed = !document.body.classList.contains("sidebar-collapsed");
-            window.localStorage.setItem(storageKey, String(nextCollapsed));
-            setSidebarState(nextCollapsed);
+            const side = button.getAttribute("data-rail-side");
+            if (!side || !railConfig[side]) {
+              return;
+            }
+            setRailState(side, !isCollapsed(side), true);
           });
         });
+
+        const backdrop = document.querySelector("[data-rail-backdrop]");
+        if (backdrop) {
+          backdrop.addEventListener("click", closeOverlayRails);
+        }
+
+        document.addEventListener("keydown", function (event) {
+          if (event.key === "Escape") {
+            closeOverlayRails();
+          }
+        });
+
+        if (typeof narrowQuery.addEventListener === "function") {
+          narrowQuery.addEventListener("change", updateBackdrop);
+        } else if (typeof narrowQuery.addListener === "function") {
+          narrowQuery.addListener(updateBackdrop);
+        }
+
+        updateBackdrop();
       });
     })();
   </script>
@@ -1433,6 +1791,468 @@ def render_summary_selection_script() -> str:
           summary.addEventListener("click", function () {
             window.requestAnimationFrame(clearSelection);
           });
+        });
+      });
+    })();
+  </script>
+"""
+
+
+def render_reading_scroll_script() -> str:
+    return """
+  <script>
+    (function () {
+      function atTop(element) {
+        return element.scrollTop <= 0;
+      }
+
+      function atBottom(element) {
+        return element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
+      }
+
+      window.addEventListener("DOMContentLoaded", function () {
+        const readingScroll = document.querySelector("[data-reading-scroll]");
+        if (!readingScroll) {
+          return;
+        }
+
+        readingScroll.addEventListener(
+          "wheel",
+          function (event) {
+            if (event.deltaY < 0 && atTop(readingScroll)) {
+              event.preventDefault();
+              window.scrollBy({ top: event.deltaY, left: 0, behavior: "auto" });
+              return;
+            }
+            if (event.deltaY > 0 && atBottom(readingScroll)) {
+              event.preventDefault();
+              window.scrollBy({ top: event.deltaY, left: 0, behavior: "auto" });
+            }
+          },
+          { passive: false }
+        );
+      });
+    })();
+  </script>
+"""
+
+
+def render_topic_chat_script() -> str:
+    return """
+  <script>
+    (function () {
+      function chatRoot() {
+        return document.querySelector("[data-topic-chat-root]");
+      }
+
+      function storageKey(root, suffix) {
+        const week = root.getAttribute("data-week") || "unknown";
+        return "learning-agent-topic-chat-" + suffix + "-week-" + week;
+      }
+
+      function sessionsKey(root) {
+        return storageKey(root, "sessions");
+      }
+
+      function draftKey(root) {
+        return storageKey(root, "draft");
+      }
+
+      function safeParse(raw, fallback) {
+        if (!raw) {
+          return fallback;
+        }
+        try {
+          return JSON.parse(raw);
+        } catch (_error) {
+          return fallback;
+        }
+      }
+
+      function normalizeMessage(item) {
+        if (!item || (item.role !== "user" && item.role !== "assistant") || typeof item.content !== "string") {
+          return null;
+        }
+        return { role: item.role, content: item.content };
+      }
+
+      function normalizeSession(item, index) {
+        if (!item || typeof item !== "object") {
+          return null;
+        }
+        const messages = Array.isArray(item.messages)
+          ? item.messages.map(normalizeMessage).filter(Boolean)
+          : [];
+        const createdAt = typeof item.created_at === "number" ? item.created_at : Date.now() + index;
+        const updatedAt = typeof item.updated_at === "number" ? item.updated_at : createdAt;
+        return {
+          id: typeof item.id === "string" && item.id ? item.id : "session_" + String(createdAt) + "_" + String(index),
+          title: typeof item.title === "string" && item.title ? item.title : "New chat",
+          created_at: createdAt,
+          updated_at: updatedAt,
+          messages: messages,
+        };
+      }
+
+      function normalizeState(raw) {
+        const payload = raw && typeof raw === "object" ? raw : {};
+        const sessions = Array.isArray(payload.sessions)
+          ? payload.sessions.map(normalizeSession).filter(Boolean)
+          : [];
+        const activeSessionId =
+          typeof payload.active_session_id === "string" && payload.active_session_id
+            ? payload.active_session_id
+            : sessions[0]
+              ? sessions[0].id
+              : "";
+        return {
+          active_session_id: sessions.some(function (session) { return session.id === activeSessionId; })
+            ? activeSessionId
+            : (sessions[0] ? sessions[0].id : ""),
+          sessions: sessions,
+        };
+      }
+
+      function loadState(root) {
+        return normalizeState(safeParse(window.localStorage.getItem(sessionsKey(root)), null));
+      }
+
+      function saveState(root, state) {
+        window.localStorage.setItem(sessionsKey(root), JSON.stringify(state));
+      }
+
+      function loadDrafts(root) {
+        const payload = safeParse(window.localStorage.getItem(draftKey(root)), {});
+        return payload && typeof payload === "object" ? payload : {};
+      }
+
+      function saveDrafts(root, drafts) {
+        window.localStorage.setItem(draftKey(root), JSON.stringify(drafts));
+      }
+
+      function activeSession(state) {
+        return state.sessions.find(function (session) {
+          return session.id === state.active_session_id;
+        });
+      }
+
+      function makeSessionId() {
+        return "session_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+      }
+
+      function createSession() {
+        const now = Date.now();
+        return {
+          id: makeSessionId(),
+          title: "New chat",
+          created_at: now,
+          updated_at: now,
+          messages: [],
+        };
+      }
+
+      function autoTitle(message) {
+        const compact = message.replace(/\\s+/g, " ").trim();
+        if (!compact) {
+          return "New chat";
+        }
+        return compact.length > 42 ? compact.slice(0, 39) + "..." : compact;
+      }
+
+      function setStatus(root, text, tone) {
+        const node = root.querySelector("[data-topic-chat-status]");
+        if (!node) {
+          return;
+        }
+        node.textContent = text || "";
+        node.className = "fine-print topic-chat-status" + (tone ? " " + tone : "");
+      }
+
+      function renderSessions(root, state) {
+        const list = root.querySelector("[data-topic-chat-session-list]");
+        if (!list) {
+          return;
+        }
+        list.innerHTML = "";
+        state.sessions
+          .slice()
+          .sort(function (left, right) {
+            return right.updated_at - left.updated_at;
+          })
+          .forEach(function (session) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "topic-chat-session" + (session.id === state.active_session_id ? " active" : "");
+            button.setAttribute("data-topic-chat-session", session.id);
+            button.textContent = session.title;
+            list.appendChild(button);
+          });
+      }
+
+      function renderHistory(root, session) {
+        const thread = root.querySelector("[data-topic-chat-thread]");
+        const empty = root.querySelector("[data-topic-chat-empty]");
+        if (!thread) {
+          return;
+        }
+        thread.querySelectorAll("[data-topic-chat-message]").forEach(function (node) {
+          node.remove();
+        });
+        const messages = session ? session.messages : [];
+        if (empty) {
+          empty.hidden = messages.length > 0;
+        }
+        messages.forEach(function (item, index) {
+          const article = document.createElement("article");
+          article.className = "topic-chat-message";
+          article.setAttribute("data-role", item.role);
+          article.setAttribute("data-topic-chat-message", String(index));
+
+          const meta = document.createElement("div");
+          meta.className = "topic-chat-meta";
+          const role = document.createElement("span");
+          role.textContent = item.role === "assistant" ? "Tutor" : "You";
+          meta.appendChild(role);
+
+          const content = document.createElement("div");
+          content.className = "topic-chat-content";
+          content.textContent = item.content;
+
+          article.appendChild(meta);
+          article.appendChild(content);
+          thread.appendChild(article);
+        });
+        thread.scrollTop = thread.scrollHeight;
+      }
+
+      function setComposerDisabled(root, disabled) {
+        const textarea = root.querySelector("[data-topic-chat-textarea]");
+        const sendButton = root.querySelector("[data-topic-chat-submit]");
+        const deleteButton = root.querySelector("[data-topic-chat-delete]");
+        const newButton = root.querySelector("[data-topic-chat-new]");
+        if (textarea) {
+          textarea.disabled = disabled;
+        }
+        if (sendButton) {
+          sendButton.disabled = disabled;
+        }
+        if (deleteButton) {
+          deleteButton.disabled = disabled;
+        }
+        if (newButton) {
+          newButton.disabled = disabled;
+        }
+      }
+
+      function updateDeleteButton(root, state, initialized, pending) {
+        const button = root.querySelector("[data-topic-chat-delete]");
+        if (!button) {
+          return;
+        }
+        button.disabled = !initialized || pending || !activeSession(state);
+      }
+
+      function persistDraft(root, state) {
+        const textarea = root.querySelector("[data-topic-chat-textarea]");
+        const session = activeSession(state);
+        if (!textarea || !session) {
+          return;
+        }
+        const drafts = loadDrafts(root);
+        const value = textarea.value || "";
+        if (!value.trim()) {
+          delete drafts[session.id];
+        } else {
+          drafts[session.id] = value;
+        }
+        saveDrafts(root, drafts);
+      }
+
+      function clearDraft(root, sessionId) {
+        const drafts = loadDrafts(root);
+        delete drafts[sessionId];
+        saveDrafts(root, drafts);
+      }
+
+      function restoreDraft(root, state) {
+        const textarea = root.querySelector("[data-topic-chat-textarea]");
+        const session = activeSession(state);
+        if (!textarea) {
+          return;
+        }
+        if (!session) {
+          textarea.value = "";
+          return;
+        }
+        const drafts = loadDrafts(root);
+        textarea.value = typeof drafts[session.id] === "string" ? drafts[session.id] : "";
+      }
+
+      function renderState(root, state, initialized, pending) {
+        renderSessions(root, state);
+        renderHistory(root, activeSession(state));
+        restoreDraft(root, state);
+        updateDeleteButton(root, state, initialized, pending);
+      }
+
+      window.addEventListener("DOMContentLoaded", function () {
+        const root = chatRoot();
+        if (!root) {
+          return;
+        }
+
+        const initialized = root.getAttribute("data-initialized") === "true";
+        const form = root.querySelector("[data-topic-chat-form]");
+        const textarea = root.querySelector("[data-topic-chat-textarea]");
+        const newButton = root.querySelector("[data-topic-chat-new]");
+        const deleteButton = root.querySelector("[data-topic-chat-delete]");
+        let pending = false;
+        let state = loadState(root);
+
+        renderState(root, state, initialized, pending);
+
+        if (textarea) {
+          textarea.addEventListener("input", function () {
+            persistDraft(root, state);
+            setStatus(root, "", "");
+          });
+        }
+
+        if (newButton) {
+          newButton.addEventListener("click", function () {
+            if (!initialized || pending) {
+              return;
+            }
+            persistDraft(root, state);
+            const session = createSession();
+            state.sessions.unshift(session);
+            state.active_session_id = session.id;
+            saveState(root, state);
+            renderState(root, state, initialized, pending);
+            setStatus(root, "", "");
+            if (textarea) {
+              textarea.focus();
+            }
+          });
+        }
+
+        if (!initialized || !form || !textarea) {
+          setComposerDisabled(root, !initialized);
+            return;
+        }
+
+        if (deleteButton) {
+          deleteButton.addEventListener("click", function () {
+            if (pending) {
+              return;
+            }
+            const session = activeSession(state);
+            if (!session) {
+              return;
+            }
+            clearDraft(root, session.id);
+            state.sessions = state.sessions.filter(function (item) {
+              return item.id !== session.id;
+            });
+            state.active_session_id = state.sessions[0] ? state.sessions[0].id : "";
+            saveState(root, state);
+            renderState(root, state, initialized, pending);
+            setStatus(root, "Chat deleted.", "success");
+          });
+        }
+
+        root.addEventListener("click", function (event) {
+          const sessionButton = event.target.closest("[data-topic-chat-session]");
+          if (sessionButton) {
+            if (pending) {
+              return;
+            }
+            persistDraft(root, state);
+            state.active_session_id = sessionButton.getAttribute("data-topic-chat-session") || "";
+            saveState(root, state);
+            renderState(root, state, initialized, pending);
+            setStatus(root, "", "");
+            return;
+          }
+
+          const suggestion = event.target.closest("[data-topic-chat-suggestion]");
+          if (suggestion && textarea) {
+            textarea.value = suggestion.getAttribute("data-topic-chat-prompt") || "";
+            persistDraft(root, state);
+            form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+          }
+        });
+
+        form.addEventListener("submit", async function (event) {
+          event.preventDefault();
+          const message = textarea.value.trim();
+          if (!message) {
+            setStatus(root, "Enter a message before sending.", "error");
+            return;
+          }
+
+          if (!activeSession(state)) {
+            const session = createSession();
+            state.sessions.unshift(session);
+            state.active_session_id = session.id;
+          }
+
+          const session = activeSession(state);
+          const targetSessionId = session.id;
+          const priorHistory = session.messages.slice();
+          if (session.title === "New chat" && session.messages.length === 0) {
+            session.title = autoTitle(message);
+          }
+          session.messages.push({ role: "user", content: message });
+          session.updated_at = Date.now();
+          saveState(root, state);
+          pending = true;
+          renderState(root, state, initialized, pending);
+          textarea.value = "";
+          clearDraft(root, targetSessionId);
+          setStatus(root, "Asking the model...", "");
+          setComposerDisabled(root, true);
+
+          try {
+            const response = await fetch("/api/topic-chat", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                message: message,
+                history: priorHistory.map(function (item) {
+                  return { role: item.role, content: item.content };
+                }),
+                current_step: root.getAttribute("data-current-step") || "",
+              }),
+            });
+            const payload = await response.json();
+            if (!response.ok) {
+              throw new Error(payload.error || "Topic chat request failed.");
+            }
+            const replySession = state.sessions.find(function (item) {
+              return item.id === targetSessionId;
+            });
+            if (replySession) {
+              replySession.messages.push({
+                role: "assistant",
+                content: payload.reply || "",
+              });
+              replySession.updated_at = Date.now();
+              saveState(root, state);
+            }
+            setStatus(root, "Reply ready.", "success");
+          } catch (error) {
+            setStatus(root, error && error.message ? error.message : "Topic chat request failed.", "error");
+          } finally {
+            pending = false;
+            renderState(root, state, initialized, pending);
+            setComposerDisabled(root, false);
+            textarea.focus();
+          }
+        });
+
+        window.addEventListener("beforeunload", function () {
+          persistDraft(root, state);
         });
       });
     })();
@@ -1733,12 +2553,108 @@ def render_body(status: Optional[dict], initialized: bool, selected_question_id:
     )
 
 
-def render_sidebar(status: Optional[dict], initialized: bool) -> str:
+def render_left_sidebar(status: Optional[dict], initialized: bool) -> str:
     if not initialized or not status:
         body = "<article class='panel'><h2>What You Will See</h2><ul class='summary-list tight'><li><strong>Learn:</strong> concept cards and question answering.</li><li><strong>Build:</strong> the generated Junior SWE task and file sync.</li><li><strong>Verify:</strong> metrics, observation, reflection, and verification.</li><li><strong>Approve:</strong> blockers, approval, and week advancement.</li></ul></article>"
     else:
         body = f"{render_blocker_panel(status)}{render_status_panel(status)}{render_checkpoint_panel(status)}"
-    return f"<aside id='left-sidebar' class='left-sidebar'><div class='left-sidebar-scroll'>{body}</div></aside>"
+    return (
+        "<aside id='left-sidebar' class='app-rail left-sidebar rail-left' data-rail-side='left'>"
+        f"<div class='app-rail-scroll left-sidebar-scroll'>{body}</div>"
+        "</aside>"
+    )
+
+
+def render_right_sidebar(status: Optional[dict], initialized: bool) -> str:
+    if not initialized or not status:
+        body = render_topic_chat_panel(
+            initialized=False,
+            week=None,
+            week_title="Initialize Week 1 to begin",
+            current_step="setup",
+        )
+    else:
+        current_step = current_workflow_step(status)
+        body = render_topic_chat_panel(
+            initialized=True,
+            week=status["week"],
+            week_title=status["title"],
+            current_step=current_step,
+        )
+    return (
+        "<aside id='right-sidebar' class='app-rail right-sidebar rail-right' data-rail-side='right'>"
+        f"<div class='app-rail-scroll right-sidebar-scroll'>{body}</div>"
+        "</aside>"
+    )
+
+
+def render_topic_chat_panel(
+    initialized: bool,
+    week: Optional[int],
+    week_title: str,
+    current_step: str,
+) -> str:
+    week_value = str(week) if week is not None else "uninitialized"
+    disabled_attr = " disabled" if not initialized else ""
+    step_label = workflow_label(current_step) if current_step in {"learn", "build", "verify", "approve"} else "Set Up"
+    starter_prompts = render_topic_chat_starters()
+    disabled_copy = (
+        "<p class='fine-print'>This chat sidebar unlocks after initialization because the tutor needs a live week context.</p>"
+        if not initialized
+        else "<p class='fine-print'>Chats stay local to this browser for this week and use the app's current model configuration.</p>"
+    )
+    return f"""
+    <article class="panel topic-chat-panel" data-topic-chat-root data-initialized="{str(initialized).lower()}" data-week="{escape(week_value)}" data-current-step="{escape(current_step)}">
+      <header class="topic-chat-header">
+        <div class="stack">
+          <span class="brand-label">Week Chat</span>
+          <h2>Week {escape(week_value) if week is not None else 'Chat'}</h2>
+          <p class="muted">{escape(week_title)}</p>
+        </div>
+        <p class="fine-print">Current step: <strong>{escape(step_label)}</strong></p>
+      </header>
+      <section class="topic-chat-sessions">
+        <div class="topic-chat-session-bar">
+          <span class="fine-print">Chats for this week</span>
+          <button type="button" class="secondary" data-topic-chat-new{disabled_attr}>New Chat</button>
+        </div>
+        <div class="topic-chat-session-list" data-topic-chat-session-list></div>
+      </section>
+      <div class="topic-chat-thread" data-topic-chat-thread>
+        <div class="topic-chat-empty" data-topic-chat-empty>
+          <p><strong>Start a new chat for this week.</strong></p>
+          <p class="muted">Ask about the topic, the structure of the week, what comes next, or concepts mentioned along the way.</p>
+          <div class="topic-chat-suggestions">
+            {starter_prompts}
+          </div>
+        </div>
+      </div>
+      <form class="form-grid topic-chat-composer" data-topic-chat-form>
+        <label>Message
+          <textarea name="topic_chat_message" placeholder="Ask about this week's topic, structure, next steps, or related concepts." data-topic-chat-textarea{disabled_attr}></textarea>
+        </label>
+        <div class="topic-chat-toolbar">
+          <button type="submit" data-topic-chat-submit{disabled_attr}>Send</button>
+          <button type="button" class="secondary" data-topic-chat-delete{disabled_attr}>Delete Chat</button>
+        </div>
+      </form>
+      {disabled_copy}
+      <p class="fine-print topic-chat-status" data-topic-chat-status></p>
+    </article>
+    """
+
+
+def render_topic_chat_starters() -> str:
+    prompts = [
+        "What is this week about?",
+        "What should I expect next?",
+        "How do the required files fit together?",
+        "What is an LLM?",
+    ]
+    return "".join(
+        f"<button type='button' class='topic-chat-suggestion' data-topic-chat-suggestion data-topic-chat-prompt='{escape(prompt)}'>{escape(prompt)}</button>"
+        for prompt in prompts
+    )
 
 
 def render_workflow_nav(status: dict, current_step: str) -> str:
@@ -1857,7 +2773,7 @@ def render_learning_panel(
         </div>
         <section class="learn-workspace">
           <div class="reading-column">
-            <div class="reading-column-scroll">
+            <div class="reading-column-scroll" data-reading-scroll>
               <article class="subpanel">
                 <h3>Concept Cards</h3>
                 <div class="concept-card-grid">{cards_html}</div>
@@ -2455,15 +3371,15 @@ def workflow_label(step_id: str) -> str:
 
 def workflow_reason(status: dict, step_id: str) -> str:
     if step_id == "learn":
-        return checkpoint_reason(status, "core_concepts", "Generate Learning Assist and pass the required questions.")
+        return checkpoint_reason(status, "core_concepts", "Pass the required questions to unlock Build.")
     if step_id == "build":
         completed = len(status["completed_files"])
         required = len(status["required_files"])
         if status["gates"]["implementation_complete"]:
             return f"{completed}/{required} required files are present."
         if status.get("task_generated"):
-            return f"{completed}/{required} required files are present."
-        return "Generate the task and start building inside the unlocked scope."
+            return f"{completed}/{required} required files are present. Create the remaining files for this week."
+        return "Generate the task and create the required files for this week."
     if step_id == "verify":
         verification = status.get("verification")
         if verification and not verification.get("passed"):
@@ -2477,7 +3393,7 @@ def workflow_reason(status: dict, step_id: str) -> str:
         if status["gates"]["week_approved"]:
             return "This week is approved and ready to advance."
         if status.get("can_approve"):
-            return "All blockers are cleared. Approve the week to unlock the next one."
+            return "Approve this week to unlock the next one."
         return f"{len(status['approval_blockers'])} blocker(s) still remain."
     return ""
 

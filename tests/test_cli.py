@@ -166,6 +166,9 @@ class FakeProvider:
     def generate_evidence_questions(self, week_spec, observation, learning_session):
         return EvidenceQuestionPayload(week=week_spec.number, questions=[])
 
+    def answer_topic_chat(self, week_spec, context, history, message):
+        return f"Topic tutor: {message}"
+
 
 def test_init_and_status(monkeypatch, tmp_path):
     roadmap = tmp_path / "docs" / "plan.md"

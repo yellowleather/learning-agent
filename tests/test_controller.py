@@ -197,6 +197,25 @@ class FakeProvider:
             ],
         )
 
+    def answer_topic_chat(self, week_spec, context, history, message):
+        return f"Topic tutor: {message}"
+
+
+class ChatCapturingProvider(FakeProvider):
+    def __init__(self):
+        self.chat_calls = []
+
+    def answer_topic_chat(self, week_spec, context, history, message):
+        self.chat_calls.append(
+            {
+                "week_spec": week_spec,
+                "context": context,
+                "history": history,
+                "message": message,
+            }
+        )
+        return f"Topic tutor: {message}"
+
 
 def write_config(tmp_path: Path, roadmap_path: Path, target_repo_path: Path) -> None:
     payload = {
@@ -395,3 +414,29 @@ def test_learning_assist_flow_records_evidence_and_reflection(monkeypatch, tmp_p
 
     approved = controller.approve_week()
     assert approved.state.gates.week_approved is True
+
+
+def test_answer_topic_chat_builds_learn_context(monkeypatch, tmp_path):
+    controller, _target_repo = make_controller(tmp_path, monkeypatch)
+    provider = ChatCapturingProvider()
+    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: provider)
+    controller.initialize()
+    controller.generate_learning_assist()
+
+    result = controller.answer_topic_chat(
+        message="How should I connect this to the benchmark task?",
+        history=[{"role": "user", "content": "Remind me what matters most."}],
+        current_step="learn",
+        selected_question_id="core_prefill_decode",
+    )
+
+    assert result["week"] == 1
+    assert result["context_label"] == "Week 1 · Learn"
+    assert result["reply"] == "Topic tutor: How should I connect this to the benchmark task?"
+    assert len(provider.chat_calls) == 1
+    call = provider.chat_calls[0]
+    assert call["message"] == "How should I connect this to the benchmark task?"
+    assert call["history"][0].role == "user"
+    assert "Week title: Build a Baseline Inference Server" in call["context"]
+    assert "Selected question context is available in the UI but is intentionally not injected into chat grounding by default." in call["context"]
+    assert "Selected question prompt: What is the difference between prefill and decode?" not in call["context"]

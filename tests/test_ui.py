@@ -1,6 +1,7 @@
 import json
 
-from learning_agent.ui import render_page, run_action
+from learning_agent.errors import LearningAgentError
+from learning_agent.ui import render_page, run_action, run_topic_chat
 
 
 class FakeProvider:
@@ -143,6 +144,9 @@ class FakeProvider:
     def generate_evidence_questions(self, week_spec, observation, learning_session):
         return {"week": week_spec.number, "questions": []}
 
+    def answer_topic_chat(self, week_spec, context, history, message):
+        return f"Tutor reply about: {message}"
+
 
 class CountingProvider(FakeProvider):
     def __init__(self):
@@ -214,12 +218,26 @@ def test_render_page_shows_uninitialized_state(monkeypatch, tmp_path):
     assert "Quick Start" in page
     assert "What You Will See" in page
     assert "sidebar-edge-toggle" in page
+    assert "right-rail-toggle" in page
     assert "left-sidebar" in page
+    assert "right-sidebar" in page
+    assert "data-rail-backdrop" in page
     assert "data-course-bar" in page
     assert "Initialize Week 1 to start the course" in page
+    assert "Week Chat" in page
+    assert "Chats for this week" in page
+    assert "New Chat" in page
+    assert "Delete Chat" in page
+    assert "What is this week about?" in page
     assert "senior software engineer" in page
     assert "Learn:" in page
     assert "Approve:" in page
+    assert "learning-agent-left-rail-collapsed" in page
+    assert "learning-agent-right-rail-collapsed" in page
+    assert "/api/topic-chat" in page
+    assert "data-topic-chat-root" in page
+    assert "data-topic-chat-session-list" in page
+    assert "data-topic-chat-suggestion" in page
 
 
 def test_run_action_init_creates_week_one(monkeypatch, tmp_path):
@@ -265,9 +283,38 @@ def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
     assert "Open Learn" in page
     assert "Concept Card Visibility" not in page
     assert "Hide Concept Cards" not in page
+    assert "Learn by Building Real Systems" in page
+    assert "Move through one unlocked week at a time." in page
+    assert "One week at a time" in page
+    assert "Real project artifacts" in page
+    assert "Your Next Step" in page
+    assert "This Week's Outcome" in page
+    assert "Mentor Control Surface" not in page
     assert "Week 1 - Build a Baseline Inference Server" in page
     assert "Current step: Learn" in page
+    assert "Local only" in page
+    assert "Port 4010" in page
+    assert "right-sidebar" in page
+    assert "Week Chat" in page
+    assert "Week 1" in page
+    assert "Build a Baseline Inference Server" in page
+    assert "Chats for this week" in page
+    assert "New Chat" in page
+    assert "Delete Chat" in page
+    assert "What is this week about?" in page
+    assert "What is an LLM?" in page
+    assert "/api/topic-chat" in page
+    assert "learning-agent-topic-chat-" in page
+    assert 'return storageKey(root, "sessions");' in page
+    assert 'return storageKey(root, "draft");' in page
+    assert "learning-agent-left-rail-collapsed" in page
+    assert "learning-agent-right-rail-collapsed" in page
+    assert "left-rail-open" in page
+    assert "right-rail-open" in page
+    assert "Active Question" not in page
     assert 'content: "▶"' in page
+    assert "data-reading-scroll" in page
+    assert "window.scrollBy({ top: event.deltaY, left: 0, behavior: \"auto\" })" in page
     assert page.index("Concept Cards") < page.index("Answer Question")
     assert "Question 1 of 50" in page
     assert "title='Previous Question'" in page
@@ -295,6 +342,56 @@ def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
     assert "learning-agent-draft-week-" in page
     assert "<summary>What A Good Answer Should Cover</summary>" in page
     assert "rubric-inline" in page
+
+
+def test_run_topic_chat_returns_json(monkeypatch, tmp_path):
+    write_config(tmp_path)
+    write_roadmap(tmp_path)
+    (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: FakeProvider())
+
+    assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
+    assert run_action("learning_generate", {"action": ["learning_generate"]}) == "Generated Learning Assist for Week 1."
+
+    payload = run_topic_chat(
+        {
+            "message": "How should I measure tokens per second?",
+            "history": [{"role": "user", "content": "What should I focus on?"}],
+            "current_step": "learn",
+            "selected_question_id": "core_prefill",
+        }
+    )
+
+    assert payload["week"] == 1
+    assert payload["context_label"] == "Week 1 · Learn"
+    assert payload["reply"] == "Tutor reply about: How should I measure tokens per second?"
+
+
+def test_run_topic_chat_returns_validation_error(monkeypatch, tmp_path):
+    write_config(tmp_path)
+    write_roadmap(tmp_path)
+    (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: FakeProvider())
+
+    assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
+
+    try:
+        run_topic_chat(
+            {
+                "message": "",
+                "history": [],
+                "current_step": "learn",
+                "selected_question_id": "core_prefill",
+            }
+        )
+    except LearningAgentError as exc:
+        assert str(exc) == "Topic chat message cannot be empty."
+    else:  # pragma: no cover
+        raise AssertionError("Expected topic chat request to fail.")
 
 
 def test_render_page_autoloads_learning_assist_only_once(monkeypatch, tmp_path):

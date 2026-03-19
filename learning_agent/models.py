@@ -169,6 +169,11 @@ class LearningBundle(StrictModel):
     attempts: List[QuestionAttempt] = Field(default_factory=list)
 
 
+class TopicChatTurn(StrictModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class CheckpointState(StrictModel):
     id: str
     title: str

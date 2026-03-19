@@ -16,6 +16,7 @@ from learning_agent.models import (
     QuestionScore,
     RawQuestionBankPayload,
     RawLearningQuestion,
+    TopicChatTurn,
     WeekSpec,
 )
 
@@ -72,4 +73,14 @@ class LLMProvider(ABC):
         observation: ObservationRecord,
         learning_session: LearningSession,
     ) -> EvidenceQuestionPayload:
+        raise NotImplementedError
+
+    @abstractmethod
+    def answer_topic_chat(
+        self,
+        week_spec: WeekSpec,
+        context: str,
+        history: list[TopicChatTurn],
+        message: str,
+    ) -> str:
         raise NotImplementedError

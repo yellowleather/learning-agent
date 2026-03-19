@@ -21,6 +21,7 @@ from learning_agent.models import (
     QuestionScore,
     RawLearningQuestion,
     RawQuestionBankPayload,
+    TopicChatTurn,
     WeekSpec,
 )
 from learning_agent.prompts import load_prompt
@@ -202,6 +203,43 @@ class OpenAIProvider(LLMProvider):
             '"roadmap_anchor": {"week": 1}, "observation_required": true}]}'
         )
         return self._completion_as_model(system_prompt, user_prompt, EvidenceQuestionPayload)
+
+    def answer_topic_chat(
+        self,
+        week_spec: WeekSpec,
+        context: str,
+        history: list[TopicChatTurn],
+        message: str,
+    ) -> str:
+        system_prompt = load_prompt("mentor.md")
+        history_lines = []
+        for turn in history[-10:]:
+            history_lines.append(f"{turn.role.title()}: {turn.content}")
+        history_text = "\n".join(history_lines) if history_lines else "(no prior chat)"
+        user_prompt = (
+            "You are the topic tutor for the current unlocked week of this learning agent.\n"
+            "Answer the user's question using the provided week context.\n"
+            "Stay grounded in the current week, current artifacts, current metrics, and current progress.\n"
+            "Be concise but technically useful.\n"
+            "Do not invent repository state that is not present in the context.\n"
+            "Avoid drifting into future-week material unless the user explicitly asks for a comparison.\n\n"
+            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n\n"
+            f"Current app context:\n{context}\n\n"
+            f"Recent chat history:\n{history_text}\n\n"
+            f"User question:\n{message}\n"
+        )
+        response = self._client().chat.completions.create(
+            model=self.model,
+            temperature=0.3,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        content = response.choices[0].message.content
+        if not content or not content.strip():
+            raise LearningAgentError("OpenAI provider returned an empty topic chat response.")
+        return content.strip()
 
     def _classify_question_batch(
         self,

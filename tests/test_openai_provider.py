@@ -1,4 +1,6 @@
-from learning_agent.models import ClassifiedQuestionBankPayload, RawQuestionBankPayload
+from types import SimpleNamespace
+
+from learning_agent.models import ClassifiedQuestionBankPayload, RawQuestionBankPayload, TopicChatTurn, WeekSpec
 from learning_agent.providers.openai_provider import OpenAIProvider
 
 
@@ -63,3 +65,40 @@ def test_validate_raw_question_bank_rejects_small_bank():
     errors = provider._validate_raw_question_bank(payload)
 
     assert any("at least 60 raw questions" in error for error in errors)
+
+
+def test_answer_topic_chat_uses_week_context_and_history(monkeypatch):
+    provider = OpenAIProvider(model="test-model")
+    captured = {}
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content="Use benchmark.py and explain decode time."))]
+            )
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+    monkeypatch.setattr(provider, "_client", lambda: fake_client)
+
+    reply = provider.answer_topic_chat(
+        week_spec=WeekSpec(
+            number=1,
+            title="Build a Baseline Inference Server",
+            goal="Run a model locally and expose it as an API.",
+            active_dirs=["simple_server"],
+            required_files=["simple_server/server.py"],
+            required_metrics=["latency_p95"],
+        ),
+        context="Step: learn\nWeek goal: Run a model locally and expose it as an API.",
+        history=[TopicChatTurn(role="user", content="What should I focus on first?")],
+        message="How should I measure tokens per second?",
+    )
+
+    assert reply == "Use benchmark.py and explain decode time."
+    assert captured["model"] == "test-model"
+    prompt = captured["messages"][1]["content"]
+    assert "Current app context:" in prompt
+    assert "Week goal: Run a model locally and expose it as an API." in prompt
+    assert "What should I focus on first?" in prompt
+    assert "How should I measure tokens per second?" in prompt
