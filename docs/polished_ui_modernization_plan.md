@@ -20,11 +20,14 @@ This plan is intentionally forward-looking. It complements the current implement
 
 The plan below is no longer purely aspirational. A first polished `Learn` vertical slice already exists in the current server-rendered UI:
 
-- concept cards are always visible and image-supported,
-- reading material is rendered between cards and questions,
-- the learn flow behaves like an open-book workspace,
-- the right side is now a single `Answer Question` section instead of separate list and answer panels,
-- question progress is shown inline,
+- the app now uses a more product-like shell with a top bar, persistent side rails, and a dominant center workspace,
+- the workspace header now includes a playful marathon-style progress strip with a runner, weekly markers, and a finish flag,
+- the left rail now carries scope, progress, deliverables, benchmark metrics, and approval readiness,
+- the main `Learn` surface is centered on a `Current Assessment` workspace rather than the older concept-card-first layout,
+- the implementation section is visible directly below the assessment workspace,
+- the right side now includes a multi-session `Assistant` rail with prompt shortcuts, thread switching, and browser-local week chat,
+- side rails are resizable on desktop and persist their widths locally,
+- the current question workspace remains a single assessment-focused answer section,
 - a full question list is available in a closable modal,
 - previous/next question navigation exists as compact arrow controls,
 - in-progress answer drafts are autosaved client-side and restored when the user returns to a question,
@@ -32,9 +35,15 @@ The plan below is no longer purely aspirational. A first polished `Learn` vertic
 - top-level workflow sections have explicit disclosure indicators,
 - small browser-side interaction cleanup is in place for details/summary toggles.
 
+Earlier intermediate ideas in this document, especially around permanently visible concept cards and reading material in the primary `Learn` layout, should be read as forward-looking product exploration rather than a description of the current shipped surface.
+
 The long-term architecture recommendation in this document is still valid: the product should eventually move to a proper frontend stack. But the immediate UX direction is already being prototyped in:
 
 - [learning_agent/ui.py](/Users/prakhar/learning_agent/learning_agent/ui.py)
+
+For the concrete near-term redesign target for the current server-rendered UI, see:
+
+- [aspirational_ui_redesign_brief.md](/Users/prakhar/learning_agent/docs/aspirational_ui_redesign_brief.md)
 
 ## 2. Why The Current UI Is Not The Right Long-Term Surface
 
@@ -128,12 +137,21 @@ Top strip:
 - progress state,
 - next recommended action.
 
+Current server-rendered implementation note:
+
+- this is now expressed as a compact workspace header plus a marathon-style course-progress strip rather than a plain utility-only top strip.
+- the center workspace currently prioritizes the active assessment, with broader concept-card and reading-material presentation deferred from the primary surface.
+
 Left pane:
 
 - concept cards,
 - reading material,
 - inline figures and captions,
 - sticky reading workspace.
+
+Current server-rendered implementation note:
+
+- this richer left-pane reading workspace is not the primary shipped layout today; the current UI instead keeps scope/progress utilities in the left rail and exposes broader question navigation through the assessment modal.
 
 Right pane:
 
