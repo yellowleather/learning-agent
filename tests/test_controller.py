@@ -217,6 +217,38 @@ class ChatCapturingProvider(FakeProvider):
         return f"Topic tutor: {message}"
 
 
+class JsonChatProvider(FakeProvider):
+    def answer_topic_chat(self, week_spec, context, history, message):
+        return """```json
+{"response": "Could you clarify your question? Are you asking about testing a specific aspect of the inference server?"}
+```"""
+
+
+class StreamingChatProvider(FakeProvider):
+    def __init__(self):
+        self.chat_calls = []
+
+    def stream_topic_chat(self, week_spec, context, history, message):
+        self.chat_calls.append(
+            {
+                "week_spec": week_spec,
+                "context": context,
+                "history": history,
+                "message": message,
+            }
+        )
+        yield "Topic "
+        yield "tutor: "
+        yield message
+
+
+class JsonStreamingChatProvider(FakeProvider):
+    def stream_topic_chat(self, week_spec, context, history, message):
+        yield "```json\n"
+        yield '{"response": "Could you clarify your question? '
+        yield 'Are you asking about testing a specific aspect of the inference server?"}\n```'
+
+
 def write_config(tmp_path: Path, roadmap_path: Path, target_repo_path: Path) -> None:
     payload = {
         "provider": "openai",
@@ -440,3 +472,62 @@ def test_answer_topic_chat_builds_learn_context(monkeypatch, tmp_path):
     assert "Week title: Build a Baseline Inference Server" in call["context"]
     assert "Selected question context is available in the UI but is intentionally not injected into chat grounding by default." in call["context"]
     assert "Selected question prompt: What is the difference between prefill and decode?" not in call["context"]
+
+
+def test_stream_topic_chat_emits_events_and_context(monkeypatch, tmp_path):
+    controller, _target_repo = make_controller(tmp_path, monkeypatch)
+    provider = StreamingChatProvider()
+    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: provider)
+    controller.initialize()
+    controller.generate_learning_assist()
+
+    events = list(
+        controller.stream_topic_chat(
+            message="How should I connect this to the benchmark task?",
+            history=[{"role": "user", "content": "Remind me what matters most."}],
+            current_step="learn",
+            selected_question_id="core_prefill_decode",
+        )
+    )
+
+    assert [event["type"] for event in events] == ["start", "delta", "delta", "delta", "done"]
+    assert events[0]["week"] == 1
+    assert events[0]["context_label"] == "Week 1 · Learn"
+    assert events[-1]["reply"] == "Topic tutor: How should I connect this to the benchmark task?"
+    assert len(provider.chat_calls) == 1
+    call = provider.chat_calls[0]
+    assert call["message"] == "How should I connect this to the benchmark task?"
+    assert call["history"][0].role == "user"
+    assert "Week title: Build a Baseline Inference Server" in call["context"]
+    assert "Selected question context is available in the UI but is intentionally not injected into chat grounding by default." in call["context"]
+
+
+def test_answer_topic_chat_normalizes_json_wrapped_reply(monkeypatch, tmp_path):
+    controller, _target_repo = make_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: JsonChatProvider())
+    controller.initialize()
+
+    result = controller.answer_topic_chat(
+        message="test",
+        history=[],
+        current_step="learn",
+    )
+
+    assert result["reply"] == "Could you clarify your question? Are you asking about testing a specific aspect of the inference server?"
+
+
+def test_stream_topic_chat_normalizes_json_wrapped_final_reply(monkeypatch, tmp_path):
+    controller, _target_repo = make_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: JsonStreamingChatProvider())
+    controller.initialize()
+
+    events = list(
+        controller.stream_topic_chat(
+            message="test",
+            history=[],
+            current_step="learn",
+        )
+    )
+
+    assert [event["type"] for event in events] == ["start", "delta", "delta", "delta", "done"]
+    assert events[-1]["reply"] == "Could you clarify your question? Are you asking about testing a specific aspect of the inference server?"

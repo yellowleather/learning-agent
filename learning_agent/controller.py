@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Dict
 
@@ -61,6 +62,7 @@ class LearningController:
         checkpoints = self._build_checkpoints(ledger, learning_session)
         return {
             "week": week_spec.number,
+            "total_weeks": ledger.curriculum_metadata.total_weeks,
             "title": week_spec.title,
             "goal": week_spec.goal,
             "active_dirs": ledger.state.active_functional_dirs,
@@ -321,6 +323,37 @@ class LearningController:
         current_step: str,
         selected_question_id: str | None = None,
     ) -> dict[str, Any]:
+        done_event: dict[str, Any] | None = None
+        error_message: str | None = None
+        for event in self.stream_topic_chat(
+            message=message,
+            history=history,
+            current_step=current_step,
+            selected_question_id=selected_question_id,
+        ):
+            event_type = str(event.get("type") or "")
+            if event_type == "done":
+                done_event = event
+            if event_type == "error":
+                error_message = str(event.get("error") or "Topic chat request failed.")
+
+        if error_message:
+            raise LearningAgentError(error_message)
+        if done_event is None:
+            raise LearningAgentError("Topic chat stream ended before a final reply was produced.")
+        return {
+            "reply": str(done_event.get("reply") or ""),
+            "week": done_event.get("week"),
+            "context_label": str(done_event.get("context_label") or ""),
+        }
+
+    def stream_topic_chat(
+        self,
+        message: str,
+        history: list[dict[str, str]] | list[TopicChatTurn],
+        current_step: str,
+        selected_question_id: str | None = None,
+    ) -> Iterator[dict[str, Any]]:
         if not message.strip():
             raise LearningAgentError("Topic chat message cannot be empty.")
 
@@ -340,8 +373,30 @@ class LearningController:
             current_step=step_id,
             selected_question_id=selected_question_id,
         )
-        reply = self._provider().answer_topic_chat(week_spec, context, history_turns, message.strip())
-        return {
+        yield {
+            "type": "start",
+            "week": week_spec.number,
+            "context_label": context_label,
+        }
+
+        raw_chunks: list[str] = []
+        provider = self._provider()
+        stream_method = getattr(provider, "stream_topic_chat", None)
+        if callable(stream_method):
+            stream = stream_method(week_spec, context, history_turns, message.strip())
+        else:
+            stream = iter([provider.answer_topic_chat(week_spec, context, history_turns, message.strip())])
+
+        for chunk in stream:
+            text = str(chunk or "")
+            if not text:
+                continue
+            raw_chunks.append(text)
+            yield {"type": "delta", "delta": text}
+
+        reply = self._normalize_topic_chat_reply("".join(raw_chunks))
+        yield {
+            "type": "done",
             "reply": reply,
             "week": week_spec.number,
             "context_label": context_label,
@@ -353,6 +408,54 @@ class LearningController:
 
     def _provider(self):
         return get_provider(self.config)
+
+    def _normalize_topic_chat_reply(self, reply: str) -> str:
+        text = str(reply or "").strip()
+        if not text:
+            raise LearningAgentError("Topic chat returned an empty reply.")
+
+        parsed = self._parse_topic_chat_json(text)
+        if parsed is None:
+            return text
+
+        extracted = self._extract_topic_chat_message(parsed)
+        return extracted or text
+
+    def _parse_topic_chat_json(self, text: str) -> dict[str, Any] | list[Any] | None:
+        candidates = [text]
+        fenced = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, flags=re.DOTALL)
+        if fenced:
+            candidates.insert(0, fenced.group(1).strip())
+
+        for candidate in candidates:
+            try:
+                parsed = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, (dict, list)):
+                return parsed
+        return None
+
+    def _extract_topic_chat_message(self, payload: dict[str, Any] | list[Any]) -> str | None:
+        if isinstance(payload, dict):
+            for key in ("response", "reply", "message", "content", "text", "answer"):
+                value = payload.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+                if isinstance(value, dict):
+                    nested = self._extract_topic_chat_message(value)
+                    if nested:
+                        return nested
+            return None
+        if isinstance(payload, list):
+            for item in payload:
+                if isinstance(item, str) and item.strip():
+                    return item.strip()
+                if isinstance(item, (dict, list)):
+                    nested = self._extract_topic_chat_message(item)
+                    if nested:
+                        return nested
+        return None
 
     def _decorate_concept_cards(self, cards: list) -> list:
         decorated = []

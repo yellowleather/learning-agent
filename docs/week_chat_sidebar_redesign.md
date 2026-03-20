@@ -22,7 +22,9 @@ The right sidebar now:
 - stores chat sessions in browser-local state per week,
 - auto-titles chats from the first user message,
 - no longer visibly emphasizes the active `Learn` question,
-- uses week-scoped context by default instead of silently grounding on the selected question.
+- no longer shows the older `Current Resources` block,
+- uses week-scoped context by default instead of silently grounding on the selected question,
+- is currently branded in the UI as `Assistant` rather than `Week Chat`.
 
 This document remains useful as the design record for that shift, but it should also reflect the current shipped behavior.
 
@@ -53,7 +55,7 @@ At a product level, the current design overfits the `Learn` step. It implies tha
 
 ## 3. Product Direction
 
-The right sidebar should become `Week Chat`.
+The right sidebar should behave like a week-scoped assistant, even though the current shipped label is `Assistant`.
 
 This assistant is a week tutor, not a question helper.
 
@@ -85,13 +87,15 @@ This redesign supersedes the earlier "question helper" framing for the right sid
 
 The right sidebar should be simplified into four regions.
 
-### 5.1 Minimal Week Header
+### 5.1 Minimal Assistant Header
 
-The header should stay lightweight and identify only the current week context:
+The header should stay lightweight and identify the surface as an assistant workspace.
 
-- week number,
-- week title,
-- optional small subtitle such as current step.
+The current shipped version uses:
+
+- `Assistant`,
+- a compact `+` action for creating a new thread,
+- lightweight `Ask / Hints / Context` tabs.
 
 It should not lead with an `Active Question` card or other question-specific summary.
 
@@ -105,6 +109,10 @@ The top of the sidebar should include a compact session switcher:
 - delete action for the active session.
 
 The session list should feel lightweight, not card-heavy.
+
+Implementation note:
+
+- duplicate empty `New chat` placeholders should never accumulate; the UI should reuse the existing empty untitled thread instead of creating another one.
 
 ### 5.3 Active Transcript
 
@@ -132,6 +140,7 @@ The composer should stay anchored consistently and feel like a normal messaging 
 The redesign explicitly removes:
 
 - the `Active Question` card,
+- the `Current Resources` block,
 - stacked week/context cards,
 - box-heavy empty-state treatment,
 - question-specific placeholder copy such as "active question" framing.
@@ -260,9 +269,52 @@ The backend contract should remain lightweight:
 - keep `current_step`,
 - keep `selected_question_id` optional for compatibility, but treat it as unused by default for chat grounding.
 
+### 9.1 Streaming Response Contract
+
+The current implementation should stream the assistant response over the existing `POST /api/topic-chat` endpoint.
+
+The request body remains the same. The response body changes from a one-shot JSON payload to streamed newline-delimited JSON (`application/x-ndjson`).
+
+Each request should emit events in this order:
+
+- one `start` event that includes `week` and `context_label`,
+- zero or more `delta` events that contain incremental assistant text,
+- exactly one terminal event:
+  - `done` with the final normalized `reply`, or
+  - `error` with inline-displayable error text.
+
+Conceptually, the streamed response looks like:
+
+```json
+{"type":"start","week":1,"context_label":"Week 1 · Learn"}
+{"type":"delta","delta":"Prefill "}
+{"type":"delta","delta":"processes the prompt first."}
+{"type":"done","reply":"Prefill processes the prompt first.","week":1,"context_label":"Week 1 · Learn"}
+```
+
+This contract keeps the existing endpoint and request payload stable while allowing the right sidebar to update incrementally.
+
 The current chat UI no longer includes `selected_question_id` in normal topic-chat requests.
 
 The controller should assemble week-scoped context by default and avoid silently anchoring the chat to the selected `Learn` question.
+
+### 9.2 Streaming UI Behavior
+
+The sidebar should treat streaming as the default interaction model.
+
+When the user sends a message:
+
+- the user message appears immediately,
+- an empty assistant bubble is created immediately,
+- composer and session-management actions are disabled while the stream is active,
+- each `delta` event appends text into the active assistant bubble,
+- the final `done` event replaces the in-progress content with the normalized final reply.
+
+If a stream fails after some text has already arrived:
+
+- the partial assistant text remains visible,
+- the UI shows the error inline in the existing status area,
+- the partial reply is only removed when the assistant bubble is still empty.
 
 ## 10. Visual Direction
 
@@ -347,4 +399,6 @@ The redesign should be validated against these scenarios:
   - "What is this week about?"
   - "What should I expect next?"
   - "What is an LLM?"
+- streaming a reply into the active assistant bubble without a full page reload,
+- preserving partial assistant text when a streamed reply fails mid-response,
 - regression check that left/right rail open-close behavior stays mirrored.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 
 from learning_agent.models import (
     ClassifiedQuestionBankPayload,
@@ -84,3 +85,12 @@ class LLMProvider(ABC):
         message: str,
     ) -> str:
         raise NotImplementedError
+
+    def stream_topic_chat(
+        self,
+        week_spec: WeekSpec,
+        context: str,
+        history: list[TopicChatTurn],
+        message: str,
+    ) -> Iterator[str]:
+        yield self.answer_topic_chat(week_spec, context, history, message)

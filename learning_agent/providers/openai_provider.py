@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterator
 from typing import Any, Type, TypeVar
 
 from pydantic import BaseModel
@@ -211,6 +212,52 @@ class OpenAIProvider(LLMProvider):
         history: list[TopicChatTurn],
         message: str,
     ) -> str:
+        messages = self._topic_chat_messages(week_spec, context, history, message)
+        response = self._chat_completions_create(
+            model=self.model,
+            temperature=0.3,
+            messages=messages,
+        )
+        content = response.choices[0].message.content
+        if not content or not content.strip():
+            raise LearningAgentError("OpenAI provider returned an empty topic chat response.")
+        return content.strip()
+
+    def stream_topic_chat(
+        self,
+        week_spec: WeekSpec,
+        context: str,
+        history: list[TopicChatTurn],
+        message: str,
+    ) -> Iterator[str]:
+        messages = self._topic_chat_messages(week_spec, context, history, message)
+        response = self._chat_completions_create(
+            model=self.model,
+            temperature=0.3,
+            messages=messages,
+            stream=True,
+        )
+        emitted = False
+        for chunk in response:
+            choices = getattr(chunk, "choices", None) or []
+            if not choices:
+                continue
+            delta = getattr(choices[0], "delta", None)
+            text = self._coerce_stream_text(getattr(delta, "content", None))
+            if not text:
+                continue
+            emitted = True
+            yield text
+        if not emitted:
+            raise LearningAgentError("OpenAI provider returned an empty topic chat response.")
+
+    def _topic_chat_messages(
+        self,
+        week_spec: WeekSpec,
+        context: str,
+        history: list[TopicChatTurn],
+        message: str,
+    ) -> list[dict[str, str]]:
         system_prompt = load_prompt("mentor.md")
         history_lines = []
         for turn in history[-10:]:
@@ -228,18 +275,30 @@ class OpenAIProvider(LLMProvider):
             f"Recent chat history:\n{history_text}\n\n"
             f"User question:\n{message}\n"
         )
-        response = self._client().chat.completions.create(
-            model=self.model,
-            temperature=0.3,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-        )
-        content = response.choices[0].message.content
-        if not content or not content.strip():
-            raise LearningAgentError("OpenAI provider returned an empty topic chat response.")
-        return content.strip()
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+    def _coerce_stream_text(self, content: Any) -> str:
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            pieces: list[str] = []
+            for item in content:
+                if isinstance(item, str):
+                    pieces.append(item)
+                    continue
+                if isinstance(item, dict):
+                    text = item.get("text")
+                    if isinstance(text, str):
+                        pieces.append(text)
+                    continue
+                text = getattr(item, "text", None)
+                if isinstance(text, str):
+                    pieces.append(text)
+            return "".join(pieces)
+        return ""
 
     def _classify_question_batch(
         self,
@@ -285,8 +344,7 @@ class OpenAIProvider(LLMProvider):
     def _completion_as_model(
         self, system_prompt: str, user_prompt: str, response_model: Type[ResponseModelT]
     ) -> ResponseModelT:
-        client = self._client()
-        response = client.chat.completions.create(
+        response = self._chat_completions_create(
             model=self.model,
             temperature=0.2,
             messages=[
@@ -300,6 +358,38 @@ class OpenAIProvider(LLMProvider):
         payload = self._extract_json(content)
         payload = self._normalize_payload(payload, response_model)
         return response_model.model_validate(payload)
+
+    def _chat_completions_create(self, **kwargs: Any):
+        client = self._client()
+        try:
+            return client.chat.completions.create(**kwargs)
+        except LearningAgentError:
+            raise
+        except Exception as exc:
+            raise self._translate_chat_error(exc) from exc
+
+    def _translate_chat_error(self, exc: Exception) -> LearningAgentError:
+        try:
+            import openai
+        except ImportError:
+            return LearningAgentError(str(exc) or "OpenAI request failed.")
+
+        if isinstance(exc, openai.AuthenticationError):
+            return LearningAgentError("OpenAI authentication failed. Check OPENAI_API_KEY.")
+        if isinstance(exc, openai.APIConnectionError):
+            return LearningAgentError("OpenAI connection failed. Check network access and API configuration.")
+        if isinstance(exc, openai.APITimeoutError):
+            return LearningAgentError("OpenAI request timed out. Try again.")
+        if isinstance(exc, openai.RateLimitError):
+            return LearningAgentError("OpenAI rate limit hit. Try again shortly.")
+        if isinstance(exc, openai.APIStatusError):
+            status_code = getattr(exc, "status_code", None)
+            if status_code:
+                return LearningAgentError(f"OpenAI request failed with status {status_code}.")
+            return LearningAgentError("OpenAI request failed.")
+        if isinstance(exc, openai.OpenAIError):
+            return LearningAgentError(str(exc) or "OpenAI request failed.")
+        return LearningAgentError(str(exc) or "OpenAI request failed.")
 
     def _client(self):
         if not self.model:
