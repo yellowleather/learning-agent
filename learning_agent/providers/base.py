@@ -17,6 +17,7 @@ from learning_agent.models import (
     QuestionScore,
     RawQuestionBankPayload,
     RawLearningQuestion,
+    ReadingMaterialPayload,
     TopicChatTurn,
     WeekSpec,
 )
@@ -28,21 +29,30 @@ class LLMProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def generate_concept_cards(
-        self,
-        week_spec: WeekSpec,
-        ledger_state: ProgressState,
-        questions: list[RawLearningQuestion],
-    ) -> ConceptCardPayload:
-        raise NotImplementedError
-
-    @abstractmethod
     def classify_question_bank(
         self,
         week_spec: WeekSpec,
         ledger_state: ProgressState,
         questions: list[RawLearningQuestion],
     ) -> ClassifiedQuestionBankPayload:
+        raise NotImplementedError
+
+    @abstractmethod
+    def generate_reading_material(
+        self,
+        week_spec: WeekSpec,
+        ledger_state: ProgressState,
+        questions: list[LearningQuestion],
+    ) -> ReadingMaterialPayload:
+        raise NotImplementedError
+
+    @abstractmethod
+    def generate_concept_cards_from_reading(
+        self,
+        week_spec: WeekSpec,
+        ledger_state: ProgressState,
+        reading_sections: list,
+    ) -> ConceptCardPayload:
         raise NotImplementedError
 
     @abstractmethod

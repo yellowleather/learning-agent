@@ -93,7 +93,6 @@ class LearningQuestion(StrictModel):
     roadmap_anchor: Dict[str, Any] = Field(default_factory=dict)
     observation_required: bool = False
     related_concept_ids: List[str] = Field(default_factory=list)
-    related_section_ids: List[str] = Field(default_factory=list)
 
 
 class QuestionScore(StrictModel):
@@ -119,11 +118,6 @@ class RawQuestionBankPayload(StrictModel):
     questions: List[RawLearningQuestion] = Field(default_factory=list)
 
 
-class ConceptCardPayload(StrictModel):
-    week: int
-    concept_cards: List[ConceptCard] = Field(default_factory=list)
-
-
 class ClassifiedQuestionBankPayload(StrictModel):
     week: int
     questions: List[LearningQuestion] = Field(default_factory=list)
@@ -147,8 +141,17 @@ class ReadingSection(StrictModel):
     title: str
     body_markdown: str
     figure_ids: List[str] = Field(default_factory=list)
-    related_question_ids: List[str] = Field(default_factory=list)
     related_concept_ids: List[str] = Field(default_factory=list)
+
+
+class ReadingMaterialPayload(StrictModel):
+    week: int
+    reading_sections: List[ReadingSection] = Field(default_factory=list)
+
+
+class ConceptCardPayload(StrictModel):
+    week: int
+    concept_cards: List[ConceptCard] = Field(default_factory=list)
 
 
 class LearningSession(StrictModel):

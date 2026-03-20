@@ -13,8 +13,156 @@ from learning_agent.models import (
     ObservationRecord,
     QuestionScore,
     RawQuestionBankPayload,
+    ReadingMaterialPayload,
     ReflectionRecord,
 )
+
+
+def _reading_sections_for(questions):
+    question_ids = [question["id"] if isinstance(question, dict) else question.id for question in questions]
+    return ReadingMaterialPayload(
+        week=1,
+        reading_sections=[
+            {
+                "id": "week_map",
+                "title": "How This Week Works",
+                "body_markdown": (
+                    "Week 1 is about learning the shape of a small inference system before you start writing code. "
+                    "You should come away knowing what the server is responsible for, how the model runtime fits into the path, "
+                    "why prompt handling and token generation are different kinds of work, and what evidence will later prove the system behaves correctly. "
+                    "If you can explain the system from the outside in, the implementation will feel grounded instead of random."
+                ),
+            },
+            {
+                "id": "request_to_response",
+                "title": "From Request To Generated Tokens",
+                "body_markdown": (
+                    "A useful mental model starts with one request entering the server and ends with generated output returning to the caller. "
+                    "The server validates the request, shapes the prompt, hands work to the runtime, and turns generated tokens back into an API response. "
+                    "That path matters because every performance claim, debugging step, and implementation decision sits somewhere along it. "
+                    "When you answer a question, you should be able to place the concept on this path instead of describing it in isolation."
+                ),
+            },
+            {
+                "id": "generation_mechanics",
+                "title": "Prefill, Decode, And Why The Split Matters",
+                "body_markdown": (
+                    "The core technical distinction this week is the split between prefill and decode. "
+                    "During prefill, the model absorbs the prompt and prepares state from the input context. "
+                    "After that, decode becomes a loop where each new token depends on the state built so far. "
+                    "If you blur those phases together, you lose the ability to explain latency behavior, throughput tradeoffs, and why prompt length and output length stress the system differently."
+                ),
+            },
+            {
+                "id": "build_artifacts",
+                "title": "How Week 1 Maps Onto Code",
+                "body_markdown": (
+                    "The reading should connect cleanly to the files you will build next. "
+                    "A server file expresses the request boundary, a benchmark file expresses how behavior gets measured, and the written results capture evidence that the system works as described. "
+                    "Thinking this way keeps implementation tied to system responsibilities rather than turning it into a list of disconnected coding tasks. "
+                    "Good answers about implementation should map ideas back to files, responsibilities, and observable behavior."
+                ),
+            },
+            {
+                "id": "measure_and_verify",
+                "title": "How To Measure And Verify",
+                "body_markdown": (
+                    "Performance numbers are only useful when you can say what was measured, what the number means, and what it hides. "
+                    "Latency and throughput answer different questions, and neither one is trustworthy without enough context about prompts, outputs, and the benchmark loop that produced them. "
+                    "The goal is to make performance reasoning disciplined rather than impressionistic. "
+                    "By the end of the week, you should be able to connect a metric back to the exact part of the inference path that could have produced it."
+                ),
+            },
+        ],
+    )
+
+
+def _concept_cards_for(_reading_sections):
+    return ConceptCardPayload(
+        week=1,
+        concept_cards=[
+            {
+                "id": "prefill-vs-decode",
+                "concept": "prefill_vs_decode",
+                "title": "Prefill vs Decode",
+                "explanation": "Prefill processes the prompt and decode emits output token by token.",
+                "why_it_matters": "This distinction explains why prompt length and output length stress the system differently.",
+                "common_mistake": "Treating all inference work as one undifferentiated block.",
+                "quick_check_question": "What changes once prefill ends and decode begins?",
+                "related_section_ids": ["generation_mechanics"],
+            },
+            {
+                "id": "token-generation",
+                "concept": "token_generation",
+                "title": "Token Generation",
+                "explanation": "Token generation is the repeated loop that turns model state into output over time.",
+                "why_it_matters": "It helps the learner reason about user-visible behavior and performance.",
+                "common_mistake": "Talking about generation without distinguishing it from prompt processing.",
+                "quick_check_question": "What part of the system repeats for every next token?",
+                "related_section_ids": ["generation_mechanics"],
+            },
+            {
+                "id": "request-flow",
+                "concept": "request_flow",
+                "title": "Request Flow",
+                "explanation": "Request flow is the full path from API input through runtime work to returned output.",
+                "why_it_matters": "It anchors system explanations in the serving path rather than isolated model facts.",
+                "common_mistake": "Explaining the model while skipping the server around it.",
+                "quick_check_question": "What are the major stages between request arrival and response delivery?",
+                "related_section_ids": ["request_to_response"],
+            },
+            {
+                "id": "api-serving",
+                "concept": "api_serving",
+                "title": "API Serving",
+                "explanation": "API serving turns the model into a usable system boundary for requests, responses, and operations.",
+                "why_it_matters": "It ties the reading back to the actual service the learner will build.",
+                "common_mistake": "Treating serving as a thin wrapper instead of part of the design.",
+                "quick_check_question": "Why is model quality alone not enough for a usable inference service?",
+                "related_section_ids": ["request_to_response", "build_artifacts"],
+            },
+            {
+                "id": "implementation-boundaries",
+                "concept": "implementation_boundaries",
+                "title": "Implementation Boundaries",
+                "explanation": "Implementation boundaries connect the ideas in the reading to the files that represent them in code.",
+                "why_it_matters": "This keeps implementation grounded in responsibilities instead of disconnected tasks.",
+                "common_mistake": "Jumping into files without first understanding which system boundary each file owns.",
+                "quick_check_question": "How should the week’s files map onto the system responsibilities?",
+                "related_section_ids": ["build_artifacts"],
+            },
+            {
+                "id": "latency-metrics",
+                "concept": "latency_metrics",
+                "title": "Latency Metrics",
+                "explanation": "Latency metrics describe how long the system takes to respond and must be tied back to the inference path.",
+                "why_it_matters": "They make performance discussions concrete and testable.",
+                "common_mistake": "Quoting latency without saying what part of the system it reflects.",
+                "quick_check_question": "What part of the request path could make latency rise?",
+                "related_section_ids": ["measure_and_verify"],
+            },
+            {
+                "id": "throughput-metrics",
+                "concept": "throughput_metrics",
+                "title": "Throughput Metrics",
+                "explanation": "Throughput metrics describe how much generation work the system can sustain over time.",
+                "why_it_matters": "They clarify efficiency, not just correctness.",
+                "common_mistake": "Treating throughput as interchangeable with latency.",
+                "quick_check_question": "What does tokens per second tell you that latency alone does not?",
+                "related_section_ids": ["measure_and_verify"],
+            },
+            {
+                "id": "benchmark-evidence",
+                "concept": "benchmark_evidence",
+                "title": "Benchmark Evidence",
+                "explanation": "Benchmark evidence turns performance claims into something inspectable and trustworthy.",
+                "why_it_matters": "It connects measurement to disciplined engineering judgment.",
+                "common_mistake": "Reporting numbers without enough benchmark context to trust them.",
+                "quick_check_question": "What makes a benchmark result trustworthy instead of just plausible?",
+                "related_section_ids": ["measure_and_verify", "week_map"],
+            },
+        ],
+    )
 
 
 class FakeProvider:
@@ -60,20 +208,6 @@ class FakeProvider:
         return RawQuestionBankPayload(
             week=week_spec.number,
             questions=questions,
-        )
-
-    def generate_concept_cards(self, week_spec, ledger_state, questions):
-        return ConceptCardPayload(
-            week=week_spec.number,
-            concept_cards=[
-                {
-                    "concept": "prefill_vs_decode",
-                    "explanation": "Prefill processes the prompt, decode emits tokens one at a time.",
-                    "why_it_matters": "Latency interpretation depends on the phase.",
-                    "common_mistake": "Treating latency as one undifferentiated number.",
-                    "quick_check_question": "Which phase grows first as prompt length increases?",
-                }
-            ],
         )
 
     def classify_question_bank(self, week_spec, ledger_state, questions):
@@ -144,6 +278,12 @@ class FakeProvider:
             week=week_spec.number,
             questions=classified_questions,
         )
+
+    def generate_reading_material(self, week_spec, ledger_state, questions):
+        return _reading_sections_for(questions)
+
+    def generate_concept_cards_from_reading(self, week_spec, ledger_state, reading_sections):
+        return _concept_cards_for(reading_sections)
 
     def generate_gate_question(self, week_spec):
         return GateQuestion(
@@ -388,13 +528,14 @@ def test_learning_assist_flow_records_evidence_and_reflection(monkeypatch, tmp_p
     assert session.reading_sections
     assert session.concept_cards[0].image_path == "/assets/illustrations/prefill-decode.svg"
     assert session.reading_sections[0].title == "How This Week Works"
-    assert "section-prefill-vs-decode" in [section.id for section in session.reading_sections]
+    assert "generation_mechanics" in [section.id for section in session.reading_sections]
+    assert session.concept_cards[0].related_section_ids
 
     bundle = controller.get_learning_bundle()
     assert bundle is not None
     assert bundle.figures
     assert bundle.reading_sections
-    assert bundle.questions[0].related_section_ids
+    assert bundle.questions[0].related_concept_ids
 
     controller.answer_learning_question("core_prefill_decode", "Prefill processes the prompt once.")
     result = controller.answer_learning_question("impl_measure_tokens", "Count tokens and divide by decode time.")

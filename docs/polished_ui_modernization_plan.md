@@ -235,7 +235,6 @@ It should add a richer bundle for the learning experience.
 - `title`
 - `body_markdown`
 - `figure_ids`
-- `related_question_ids`
 - `related_concept_ids`
 
 `LearningBundle`
@@ -251,9 +250,17 @@ It should add a richer bundle for the learning experience.
 Questions should be extended with:
 
 - `related_concept_ids`
-- `related_section_ids`
 
-This is what enables the "open book exam" UX. The UI can surface "Relevant reading" and jump the user to the exact part of the chapter that supports the selected question.
+Question-to-reading links are intentionally omitted. Reading material should stay a standalone learning surface rather than being chopped into question-level references.
+
+Current product-direction note:
+
+- the generation order should be `questions -> reading sections -> concept cards`,
+- reading sections should behave like a concise technical blog post for the current week,
+- only the top orientation block should be fixed; the remaining reading blocks should be generated from the current week's question themes,
+- concept cards should be generated from and anchored to that reading material,
+- `How This Week Works` should be surfaced as a separate orientation block at the top of the Learn UI, not buried in the regular reading stack,
+- concept cards should not be treated as a separate primary source of truth that independently drives the question set.
 
 ### 6.3 Images
 
@@ -269,7 +276,7 @@ Do not make the learning flow depend on AI image generation in the first release
 
 ## 7. Reading Material Strategy
 
-Reading material should sit between concept cards and questions.
+Reading material should sit between question generation and concept-card generation.
 
 It should be:
 
@@ -279,6 +286,11 @@ It should be:
 - visual, with diagrams where they materially help,
 - structured in sections rather than dumped as one large document.
 
+Operationally, the reading should be written with a clear objective:
+
+- if a user reads the post carefully, they should be able to answer the required Week N question set,
+- concept cards should then work as compact anchors to the reading's important distinctions, not as duplicate mini-lessons.
+
 The system should avoid storing this content as `.docx` for runtime rendering. Prefer:
 
 - markdown plus structured metadata, or
@@ -286,7 +298,7 @@ The system should avoid storing this content as `.docx` for runtime rendering. P
 
 ### 7.1 Week 1 Guidance
 
-For Week 1, the chapter should stay tightly aligned with the required work:
+For Week 1, the reading should stay tightly aligned with the required work:
 
 - prefill vs decode,
 - latency and `latency_p95`,

@@ -22,6 +22,7 @@ from learning_agent.models import (
     QuestionScore,
     RawLearningQuestion,
     RawQuestionBankPayload,
+    ReadingMaterialPayload,
     TopicChatTurn,
     WeekSpec,
 )
@@ -86,28 +87,6 @@ class OpenAIProvider(LLMProvider):
 
         raise LearningAgentError("Raw question bank generation failed validation: " + "; ".join(errors))
 
-    def generate_concept_cards(
-        self,
-        week_spec: WeekSpec,
-        ledger_state: ProgressState,
-        questions: list[RawLearningQuestion],
-    ) -> ConceptCardPayload:
-        system_prompt = load_prompt("mentor.md")
-        user_prompt = (
-            "Derive the teaching cards needed to help a learner answer the provided current-week assessment bank.\n"
-            "Use only the current-week context, ledger state, and the provided raw questions. Output JSON only.\n"
-            "Generate 5-10 concept cards that cover the smallest meaningful teaching surface needed to answer the bank well.\n"
-            "Each card must teach a real current-week concept, explain why it matters for the week's deliverables, "
-            "state a common mistake, and optionally include a quick check.\n"
-            "Do not generate future-week concepts.\n\n"
-            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n"
-            f"Current ledger state:\n{ledger_state.model_dump_json(indent=2)}\n"
-            f"Raw question bank:\n{json.dumps([question.model_dump(mode='json') for question in questions], indent=2)}\n"
-            'Required JSON shape: {"week": 1, "concept_cards": [{"concept": "...", "explanation": "...", '
-            '"why_it_matters": "...", "common_mistake": "...", "quick_check_question": "..."}]}'
-        )
-        return self._completion_as_model(system_prompt, user_prompt, ConceptCardPayload)
-
     def classify_question_bank(
         self,
         week_spec: WeekSpec,
@@ -129,6 +108,87 @@ class OpenAIProvider(LLMProvider):
             classified_questions.extend(payload.questions)
         classified_questions = self._ensure_unique_question_ids(classified_questions)
         return ClassifiedQuestionBankPayload(week=week_spec.number, questions=classified_questions)
+
+    def generate_reading_material(
+        self,
+        week_spec: WeekSpec,
+        ledger_state: ProgressState,
+        questions: list[LearningQuestion],
+    ) -> ReadingMaterialPayload:
+        system_prompt = load_prompt("mentor.md")
+        theme_hints = self._reading_theme_hints(questions)
+
+        user_prompt = (
+            "Write the learner-facing reading material for the current week. Output JSON only.\n"
+            "The reading must feel like a concise technical blog post or explainer written for an engineer, not like a textbook chapter, "
+            "lesson plan, UI walkthrough, or internal product artifact.\n"
+            "The learner should be able to read it and then answer the provided current-week questions well.\n\n"
+            "Writing rules:\n"
+            "- Do not mention the words chapter, section, concept card, concept cards, question bank, rubric, or UI.\n"
+            "- Do not talk about what the platform is doing. Teach the technical ideas directly.\n"
+            "- Use a clear, blog-like voice: concrete, explanatory, and grounded in the week's system.\n"
+            "- Make the prose sufficient to answer the question set, not just a summary.\n"
+            "- Keep the reading tightly scoped to the current week. Do not leak future-week topics.\n"
+            "- Use markdown paragraphs and short bullet lists where they genuinely help.\n"
+            "- Return 3-6 reading blocks.\n"
+            '- The first block must have id="week_map" and title="How This Week Works".\n'
+            "- The remaining reading blocks should be generated dynamically from the classified question bank.\n"
+            "- Do not assume Week 1 topics such as prefill/decode unless they are clearly supported by the provided questions.\n"
+            "- Name the remaining blocks after the actual technical themes that recur in the questions.\n"
+            "- Do not attach reading blocks to individual questions.\n\n"
+            "Required opening block:\n"
+            + json.dumps(
+                {
+                    "id": "week_map",
+                    "title": "How This Week Works",
+                    "purpose": "Orient the learner to the week's goal, system shape, and why the work matters before implementation.",
+                },
+                indent=2,
+            )
+            + "\n\n"
+            + (
+                f"Recurring question themes to consider when naming the remaining reading blocks:\n{json.dumps(theme_hints, indent=2)}\n\n"
+                if theme_hints
+                else ""
+            )
+            +
+            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n"
+            f"Current ledger state:\n{ledger_state.model_dump_json(indent=2)}\n"
+            f"Classified question bank:\n{json.dumps([question.model_dump(mode='json') for question in questions], indent=2)}\n"
+            'Required JSON shape: {"week": 1, "reading_sections": [{"id": "week_map", "title": "How This Week Works", '
+            '"body_markdown": "..."}]}'
+        )
+        return self._completion_as_model(system_prompt, user_prompt, ReadingMaterialPayload)
+
+    def generate_concept_cards_from_reading(
+        self,
+        week_spec: WeekSpec,
+        ledger_state: ProgressState,
+        reading_sections: list,
+    ) -> ConceptCardPayload:
+        system_prompt = load_prompt("mentor.md")
+        user_prompt = (
+            "Generate learner-facing concept cards derived from the provided current-week reading material. Output JSON only.\n"
+            "Use the reading material as the source of truth. Do not generate cards directly from a question bank.\n"
+            "The cards should anchor the important ideas in the reading without duplicating the reading verbatim.\n\n"
+            "Card requirements:\n"
+            "- Generate 5-10 concept cards.\n"
+            "- Every card must include id, concept, title, explanation, why_it_matters, common_mistake, quick_check_question, and related_section_ids.\n"
+            "- id should be stable kebab-case.\n"
+            "- concept should be a stable snake_case label.\n"
+            "- related_section_ids must reference one or more of the provided reading section ids.\n"
+            "- Prefer cards built around major technical distinctions, system boundaries, metrics, and implementation concepts present in the reading.\n"
+            "- Do not create cards for future-week topics.\n"
+            "- Do not mention the words chapter, section, question bank, rubric, or UI in the card body text.\n"
+            "- Do not refer to the platform or to what the learner is clicking.\n\n"
+            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n"
+            f"Current ledger state:\n{ledger_state.model_dump_json(indent=2)}\n"
+            f"Reading material:\n{json.dumps([section.model_dump(mode='json') if hasattr(section, 'model_dump') else section for section in reading_sections], indent=2)}\n"
+            'Required JSON shape: {"week": 1, "concept_cards": [{"id": "prefill-vs-decode", "concept": "prefill_vs_decode", '
+            '"title": "Prefill vs Decode", "explanation": "...", "why_it_matters": "...", "common_mistake": "...", '
+            '"quick_check_question": "...", "related_section_ids": ["generation_mechanics"]}]}'
+        )
+        return self._completion_as_model(system_prompt, user_prompt, ConceptCardPayload)
 
     def generate_gate_question(self, week_spec: WeekSpec) -> GateQuestion:
         system_prompt = load_prompt("mentor.md")
@@ -425,12 +485,59 @@ class OpenAIProvider(LLMProvider):
                 payload["questions"] = [self._normalize_raw_question(question) for question in questions]
             return payload
 
+        if response_model is ConceptCardPayload:
+            concept_cards = payload.get("concept_cards")
+            if isinstance(concept_cards, list):
+                payload = dict(payload)
+                payload["concept_cards"] = [self._normalize_concept_card(card) for card in concept_cards]
+            return payload
+
         if response_model in {ClassifiedQuestionBankPayload, EvidenceQuestionPayload}:
             questions = payload.get("questions")
             if isinstance(questions, list):
                 payload = dict(payload)
                 payload["questions"] = [self._normalize_question(question) for question in questions]
         return payload
+
+    def _reading_theme_hints(self, questions: list[LearningQuestion]) -> list[str]:
+        counts: dict[str, int] = {}
+        labels: dict[str, str] = {}
+        for question in questions:
+            for raw_hint in self._question_theme_candidates(question):
+                key = self._slugify_hint(raw_hint)
+                if not key:
+                    continue
+                counts[key] = counts.get(key, 0) + 1
+                labels.setdefault(key, self._humanize_hint(raw_hint))
+        ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        return [labels[key] for key, _count in ranked[:8]]
+
+    def _question_theme_candidates(self, question: LearningQuestion) -> list[str]:
+        candidates: list[str] = []
+        roadmap_anchor = question.roadmap_anchor or {}
+        for key in ("concept", "topic", "metric", "deliverable"):
+            value = roadmap_anchor.get(key)
+            if not isinstance(value, str) or not value.strip():
+                continue
+            if key == "deliverable":
+                stem = os.path.splitext(os.path.basename(value.strip()))[0]
+                if stem:
+                    candidates.append(stem)
+                parent = os.path.basename(os.path.dirname(value.strip()))
+                if parent:
+                    candidates.append(parent)
+                continue
+            candidates.append(value.strip())
+        if not candidates:
+            candidates.extend(token for token in question.prompt_text.split()[:4] if len(token) >= 4)
+        return candidates
+
+    def _slugify_hint(self, value: str) -> str:
+        return "".join(char.lower() if char.isalnum() else "-" for char in value).strip("-")
+
+    def _humanize_hint(self, value: str) -> str:
+        text = value.replace("_", " ").replace("-", " ").replace("/", " ").strip()
+        return " ".join(part.capitalize() for part in text.split())
 
     def _validate_raw_question_bank(self, payload: RawQuestionBankPayload) -> list[str]:
         errors: list[str] = []
@@ -532,6 +639,25 @@ class OpenAIProvider(LLMProvider):
         tier = normalized.get("tier")
         if isinstance(tier, str):
             normalized["tier"] = self._normalize_raw_tier(tier)
+        return normalized
+
+    def _normalize_concept_card(self, card: Any) -> Any:
+        if not isinstance(card, dict):
+            return card
+
+        normalized = dict(card)
+        if "why_it_matters" not in normalized and isinstance(normalized.get("why"), str):
+            normalized["why_it_matters"] = normalized["why"]
+        if "common_mistake" not in normalized and isinstance(normalized.get("mistake"), str):
+            normalized["common_mistake"] = normalized["mistake"]
+        if "quick_check_question" not in normalized:
+            for key in ("quick_check", "quick_check_prompt"):
+                value = normalized.get(key)
+                if isinstance(value, str):
+                    normalized["quick_check_question"] = value
+                    break
+        if "related_section_ids" not in normalized and isinstance(normalized.get("section_ids"), list):
+            normalized["related_section_ids"] = normalized["section_ids"]
         return normalized
 
     def _normalize_question(self, question: Any) -> Any:

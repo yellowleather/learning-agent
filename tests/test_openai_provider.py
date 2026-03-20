@@ -4,7 +4,16 @@ import httpx
 import openai
 
 from learning_agent.errors import LearningAgentError
-from learning_agent.models import ClassifiedQuestionBankPayload, RawQuestionBankPayload, TopicChatTurn, WeekSpec
+from learning_agent.models import (
+    ClassifiedQuestionBankPayload,
+    ConceptCardPayload,
+    LearningQuestion,
+    ProgressState,
+    RawQuestionBankPayload,
+    ReadingMaterialPayload,
+    TopicChatTurn,
+    WeekSpec,
+)
 from learning_agent.providers.openai_provider import OpenAIProvider
 
 
@@ -106,6 +115,114 @@ def test_answer_topic_chat_uses_week_context_and_history(monkeypatch):
     assert "Week goal: Run a model locally and expose it as an API." in prompt
     assert "What should I focus on first?" in prompt
     assert "How should I measure tokens per second?" in prompt
+
+
+def test_generate_reading_material_uses_blog_style_contract(monkeypatch):
+    provider = OpenAIProvider(model="test-model")
+    captured = {}
+
+    def fake_completion(system_prompt, user_prompt, response_model):
+        captured["system_prompt"] = system_prompt
+        captured["user_prompt"] = user_prompt
+        captured["response_model"] = response_model
+        return ReadingMaterialPayload(
+            week=1,
+            reading_sections=[
+                {
+                    "id": "week_map",
+                    "title": "How This Week Works",
+                    "body_markdown": "Read the system from outside in.",
+                }
+            ],
+        )
+
+    monkeypatch.setattr(provider, "_completion_as_model", fake_completion)
+
+    payload = provider.generate_reading_material(
+        week_spec=WeekSpec(
+            number=1,
+            title="Build a Baseline Inference Server",
+            goal="Run a model locally and expose it as an API.",
+            active_dirs=["simple_server"],
+            required_files=["simple_server/server.py"],
+            required_metrics=["latency_p95"],
+        ),
+        ledger_state=ProgressState(current_week=1, learning_assist_enabled=True),
+        questions=[
+            LearningQuestion(
+                id="q1",
+                type="concept",
+                scope="core",
+                depth="baseline",
+                prompt_text="Explain prefill vs decode.",
+                scoring_rubric=["Mention prompt processing."],
+                roadmap_anchor={"week": 1},
+                observation_required=False,
+            )
+        ],
+    )
+
+    assert payload.week == 1
+    prompt = captured["user_prompt"]
+    assert "technical blog post or explainer" in prompt
+    assert "Do not mention the words chapter, section, concept card" in prompt
+    assert '"id": "week_map"' in prompt
+    assert "The remaining reading blocks should be generated dynamically from the classified question bank." in prompt
+    assert "Do not assume Week 1 topics such as prefill/decode unless they are clearly supported by the provided questions." in prompt
+    assert captured["response_model"] is ReadingMaterialPayload
+
+
+def test_generate_concept_cards_from_reading_uses_reading_material_contract(monkeypatch):
+    provider = OpenAIProvider(model="test-model")
+    captured = {}
+
+    def fake_completion(system_prompt, user_prompt, response_model):
+        captured["system_prompt"] = system_prompt
+        captured["user_prompt"] = user_prompt
+        captured["response_model"] = response_model
+        return ConceptCardPayload(
+            week=1,
+            concept_cards=[
+                {
+                    "id": "prefill-vs-decode",
+                    "concept": "prefill_vs_decode",
+                    "title": "Prefill vs Decode",
+                    "explanation": "Prefill processes the prompt and decode emits output token by token.",
+                    "why_it_matters": "It explains why prompt length and output length stress the system differently.",
+                    "common_mistake": "Treating inference as one undifferentiated block.",
+                    "quick_check_question": "What changes once prefill ends and decode begins?",
+                    "related_section_ids": ["generation_mechanics"],
+                }
+            ],
+        )
+
+    monkeypatch.setattr(provider, "_completion_as_model", fake_completion)
+
+    payload = provider.generate_concept_cards_from_reading(
+        week_spec=WeekSpec(
+            number=1,
+            title="Build a Baseline Inference Server",
+            goal="Run a model locally and expose it as an API.",
+            active_dirs=["simple_server"],
+            required_files=["simple_server/server.py"],
+            required_metrics=["latency_p95"],
+        ),
+        ledger_state=ProgressState(current_week=1, learning_assist_enabled=True),
+        reading_sections=[
+            {
+                "id": "generation_mechanics",
+                "title": "Prefill, Decode, And Why The Split Matters",
+                "body_markdown": "Prefill processes the prompt. Decode emits output token by token.",
+            }
+        ],
+    )
+
+    assert payload.week == 1
+    prompt = captured["user_prompt"]
+    assert "Generate learner-facing concept cards derived from the provided current-week reading material." in prompt
+    assert "Do not generate cards directly from a question bank." in prompt
+    assert '"id": "prefill-vs-decode"' in prompt
+    assert captured["response_model"] is ConceptCardPayload
 
 
 def test_stream_topic_chat_uses_streaming_and_yields_deltas(monkeypatch):

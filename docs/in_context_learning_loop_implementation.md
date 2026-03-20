@@ -258,34 +258,35 @@ The Junior prompt is used for:
 
 ### 7.2 Generation Strategy
 
-The implementation uses **one-shot generation per feature**, not a multi-step planner.
+The current implementation uses a **questions-first learning pipeline**.
 
 Specifically:
 
-1. `generate_learning_assist()` makes one LLM call that returns both:
-   - concept cards
-   - the initial question bank
-2. `generate_task()` makes a separate LLM call for the implementation brief.
-3. `record_observation()` may trigger one additional LLM call to generate evidence-based questions after a `valid` observation.
-4. `answer_learning_question()` makes one LLM call per submitted answer to score it against the rubric.
-5. the older `gate ask` and `gate submit` flow remains available as a separate legacy path.
+1. `generate_learning_assist()` first generates and classifies the current week's question bank from the week plan.
+2. The provider then writes blog-style reading material designed to make those questions answerable.
+The provider keeps `How This Week Works` as the opening orientation block, but the remaining reading blocks are generated dynamically from the current week's classified question themes.
+3. The provider then generates concept cards from the reading material so the cards act as anchors rather than parallel mini-lessons.
+4. `generate_task()` makes a separate LLM call for the implementation brief.
+5. `record_observation()` may trigger one additional LLM call to generate evidence-based questions after a `valid` observation.
+6. `answer_learning_question()` makes one LLM call per submitted answer to score it against the rubric.
+7. the older `gate ask` and `gate submit` flow remains available as a separate legacy path.
 
-### 7.3 Current Learning Assist Prompt
+### 7.3 Current Learning Assist Prompting
 
 The Learning Assist prompt is built in [learning_agent/providers/openai_provider.py](/Users/prakhar/learning_agent/learning_agent/providers/openai_provider.py).
 
-Its current structure is:
+Its current question-generation structure is:
 
 ```text
-Create the current week's Learning Assist content.
+Create the current week's Learning Assist question bank.
 Use only the provided current-week context and ledger state. Output JSON only.
-Return 3-6 concept cards and a sizable question bank. Include core baseline questions that cover the week,
+Return a sizable question bank. Include core baseline questions that cover the week,
 plus some deeper or adjacent questions. Evidence-based questions should be marked with observation_required=true.
 Current week context:
 {week_spec JSON}
 Current ledger state:
 {ledger_state JSON}
-Required JSON shape: {"week": 1, "concept_cards": [...], "questions": [...]}
+Required JSON shape: {"week": 1, "questions": [...]}
 ```
 
 The important implementation detail is that generation is constrained by:
@@ -295,6 +296,13 @@ The important implementation detail is that generation is constrained by:
 - fixed response schema
 
 The provider does not have access to future weeks if the controller does not pass them in.
+
+The current controller then derives the rest of the learning bundle in this order:
+
+1. questions,
+2. blog-style reading blocks built to support those questions,
+3. concept cards generated from the reading sections,
+4. question-to-reading and question-to-card links used by the UI.
 
 ## 8. CLI Usage
 

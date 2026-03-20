@@ -4,6 +4,150 @@ from learning_agent.errors import LearningAgentError
 from learning_agent.ui import render_page, run_action, run_topic_chat, run_topic_chat_stream
 
 
+def _reading_sections_for(questions):
+    question_ids = [question["id"] if isinstance(question, dict) else question.id for question in questions]
+    return {
+        "week": 1,
+        "reading_sections": [
+            {
+                "id": "week_map",
+                "title": "How This Week Works",
+                "body_markdown": (
+                    "Week 1 introduces the shape of a small inference system before implementation starts. "
+                    "The learner should understand the serving boundary, the model runtime, the split between prompt handling and token generation, "
+                    "and the role of measurement in proving that the system behaves the way it is described. "
+                    "That foundation is what makes the later coding and benchmarking work coherent."
+                ),
+            },
+            {
+                "id": "request_to_response",
+                "title": "From Request To Generated Tokens",
+                "body_markdown": (
+                    "Tracing one request from API entry to generated output gives the clearest mental model for the week. "
+                    "The server receives and validates input, prepares the prompt, delegates model work to the runtime, and packages the output back into a response. "
+                    "Every debugging conversation and every system explanation can be grounded in that path."
+                ),
+            },
+            {
+                "id": "generation_mechanics",
+                "title": "Prefill, Decode, And Why The Split Matters",
+                "body_markdown": (
+                    "Prefill processes the prompt first so the model can build the state it needs for generation. "
+                    "After that, decode produces output incrementally over time. "
+                    "Keeping those phases separate helps the learner explain performance behavior, user-visible latency, and why prompt length and output length affect the system differently. "
+                    "It also makes the benchmark results more interpretable."
+                ),
+            },
+            {
+                "id": "build_artifacts",
+                "title": "How Week 1 Maps Onto Code",
+                "body_markdown": (
+                    "The reading should point naturally toward the files that get built next. "
+                    "A serving file defines the API boundary, a benchmark file defines how behavior is measured, and a results document records what was observed. "
+                    "That mapping keeps implementation grounded in system responsibilities instead of reducing the work to disconnected tasks."
+                ),
+            },
+            {
+                "id": "measure_and_verify",
+                "title": "How To Measure And Verify",
+                "body_markdown": (
+                    "Performance reasoning should be disciplined. "
+                    "A metric only becomes useful when the learner can explain what was timed, what the value means, what the benchmark setup included, and what the number still does not tell you. "
+                    "Latency and throughput answer different questions, and both need to be connected back to the inference path that produced them."
+                ),
+            },
+        ],
+    }
+
+
+def _concept_cards_for(_reading_sections):
+    return {
+        "week": 1,
+        "concept_cards": [
+            {
+                "id": "prefill-vs-decode",
+                "concept": "prefill_vs_decode",
+                "title": "Prefill vs Decode",
+                "explanation": "Prefill processes the prompt and decode emits output token by token.",
+                "why_it_matters": "It explains why prompt length and output length stress the system differently.",
+                "common_mistake": "Treating inference as one undifferentiated block.",
+                "quick_check_question": "What changes once prefill ends and decode begins?",
+                "related_section_ids": ["generation_mechanics"],
+            },
+            {
+                "id": "token-generation",
+                "concept": "token_generation",
+                "title": "Token Generation",
+                "explanation": "Token generation is the repeated loop that turns model state into output over time.",
+                "why_it_matters": "It helps the learner reason about behavior and performance.",
+                "common_mistake": "Talking about generation without distinguishing it from prompt processing.",
+                "quick_check_question": "What part of the system repeats for every next token?",
+                "related_section_ids": ["generation_mechanics"],
+            },
+            {
+                "id": "request-flow",
+                "concept": "request_flow",
+                "title": "Request Flow",
+                "explanation": "Request flow is the path from API input through runtime work to returned output.",
+                "why_it_matters": "It anchors system explanations in the serving path.",
+                "common_mistake": "Explaining the model while skipping the server around it.",
+                "quick_check_question": "What happens between request arrival and response delivery?",
+                "related_section_ids": ["request_to_response"],
+            },
+            {
+                "id": "api-serving",
+                "concept": "api_serving",
+                "title": "API Serving",
+                "explanation": "API serving turns the model into a usable system boundary for requests and responses.",
+                "why_it_matters": "It ties the reading to the actual service the learner will build.",
+                "common_mistake": "Treating serving as a thin wrapper.",
+                "quick_check_question": "Why is model quality alone not enough for a usable inference service?",
+                "related_section_ids": ["request_to_response", "build_artifacts"],
+            },
+            {
+                "id": "implementation-boundaries",
+                "concept": "implementation_boundaries",
+                "title": "Implementation Boundaries",
+                "explanation": "Implementation boundaries connect the ideas in the reading to the files that express them in code.",
+                "why_it_matters": "This keeps implementation grounded in responsibilities.",
+                "common_mistake": "Treating files as disconnected tasks.",
+                "quick_check_question": "Which file owns which responsibility?",
+                "related_section_ids": ["build_artifacts"],
+            },
+            {
+                "id": "latency-metrics",
+                "concept": "latency_metrics",
+                "title": "Latency Metrics",
+                "explanation": "Latency metrics describe how long the system takes to respond.",
+                "why_it_matters": "They make performance reasoning concrete.",
+                "common_mistake": "Quoting latency without context.",
+                "quick_check_question": "What part of the path could increase latency?",
+                "related_section_ids": ["measure_and_verify"],
+            },
+            {
+                "id": "throughput-metrics",
+                "concept": "throughput_metrics",
+                "title": "Throughput Metrics",
+                "explanation": "Throughput metrics describe how much generation work the system sustains over time.",
+                "why_it_matters": "They clarify efficiency, not just correctness.",
+                "common_mistake": "Treating throughput as interchangeable with latency.",
+                "quick_check_question": "What does tokens per second tell you that latency alone does not?",
+                "related_section_ids": ["measure_and_verify"],
+            },
+            {
+                "id": "benchmark-evidence",
+                "concept": "benchmark_evidence",
+                "title": "Benchmark Evidence",
+                "explanation": "Benchmark evidence turns performance claims into inspectable results.",
+                "why_it_matters": "It connects measurement to trust.",
+                "common_mistake": "Reporting numbers without benchmark context.",
+                "quick_check_question": "What makes a benchmark trustworthy?",
+                "related_section_ids": ["week_map", "measure_and_verify"],
+            },
+        ],
+    }
+
+
 class FakeProvider:
     def generate_raw_question_bank(self, week_spec, ledger_state):
         questions = [
@@ -47,20 +191,6 @@ class FakeProvider:
         return {
             "week": week_spec.number,
             "questions": questions,
-        }
-
-    def generate_concept_cards(self, week_spec, ledger_state, questions):
-        return {
-            "week": week_spec.number,
-            "concept_cards": [
-                {
-                    "concept": "prefill_vs_decode",
-                    "explanation": "Prefill handles the prompt while decode emits tokens.",
-                    "why_it_matters": "Benchmark interpretation depends on this split.",
-                    "common_mistake": "Treating all latency as one number.",
-                    "quick_check_question": "Which phase grows first with prompt length?",
-                }
-            ],
         }
 
     def classify_question_bank(self, week_spec, ledger_state, questions):
@@ -128,6 +258,12 @@ class FakeProvider:
             for index in range(1, 13)
         )
         return {"week": week_spec.number, "questions": classified_questions}
+
+    def generate_reading_material(self, week_spec, ledger_state, questions):
+        return _reading_sections_for(questions)
+
+    def generate_concept_cards_from_reading(self, week_spec, ledger_state, reading_sections):
+        return _concept_cards_for(reading_sections)
 
     def generate_gate_question(self, week_spec):
         raise AssertionError("Legacy gate is not exercised in this UI test.")
@@ -236,10 +372,11 @@ def test_render_page_shows_uninitialized_state(monkeypatch, tmp_path):
     assert "Week Chat" not in page
     assert "Ask The Model" not in page
     assert "Current Assessment" in page
-    assert "Explain prefill vs decode" in page
-    assert "Show example pipeline" in page
-    assert "Common pitfalls" in page
-    assert "Performance tips" in page
+    assert "Starter questions will appear once learning content is loaded." in page
+    assert "Explain prefill vs decode" not in page
+    assert "Show example pipeline" not in page
+    assert "Common pitfalls" not in page
+    assert "Performance tips" not in page
     assert 'data-topic-chat-delete' in page
     assert 'aria-label="Delete chat"' in page
     assert "workspace-sidebar-v3" in page
@@ -273,7 +410,7 @@ def test_run_action_init_creates_week_one(monkeypatch, tmp_path):
     assert message == "Initialized Week 1."
     page = render_page()
     assert "Week 1" in page
-    assert "simple_server/server.py" in page
+    assert "server.py" in page
     assert "Build a Baseline Inference Server" in page
     assert "Baseline Inference Server" in page
 
@@ -297,18 +434,16 @@ def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
     assert "Create Deliverables" in page
     assert "Metrics &amp; Evidence" in page
     assert "Unlock Next Stage" in page
-    assert "Current Assessment" in page
+    assert "Learn Workspace" in page
+    assert "Study on the left and answer on the right." in page
     assert "Question 1 of 50" in page
     assert "Explain prefill vs decode." in page
     assert "Mention prompt processing." in page
     assert "Mention iterative decoding." in page
     assert "Submit Answer" in page
-    assert "Your Progress" in page
-    assert "0 / 2 Questions" in page
     assert "0% complete" in page
     assert "Token Generation" in page
     assert "Prefill vs Decode" in page
-    assert "Inference Pipeline" in page
     assert "Implementation" in page
     assert "Deliverables" in page
     assert "Benchmark Metrics" in page
@@ -319,9 +454,11 @@ def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
     assert "Verification" in page
     assert "Assistant" in page
     assert "Chat" in page
+    assert "I&#x27;m new to this. Can you explain prefill vs decode in simple terms?" in page
+    assert 'Can you walk me through &quot;From Request To Generated Tokens&quot; like I&#x27;m just getting started?' in page
+    assert 'What does &quot;Prefill vs Decode&quot; mean, and why does it matter this week?' in page
+    assert 'What should I pay attention to when reading &quot;How To Measure And Verify&quot;?' in page
     assert "core_prefill" in page
-    assert "Create Build Brief" in page
-    assert "Scan Repository" in page
     assert "Continue Step" in page
     assert "Capstone Project" in page
     assert "In Progress" in page
@@ -348,8 +485,8 @@ def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
     assert "Build a Baseline Inference Server" in page
     assert 'data-topic-chat-delete' in page
     assert 'aria-label="Delete chat"' in page
-    assert "Explain prefill vs decode" in page
-    assert "Show example pipeline" in page
+    assert "I&#x27;m new to this. Can you explain prefill vs decode in simple terms?" in page
+    assert 'Can you walk me through &quot;From Request To Generated Tokens&quot; like I&#x27;m just getting started?' in page
     assert "/api/topic-chat" in page
     assert "learning-agent-topic-chat-" in page
     assert 'buffer.split(/\\r?\\n/);' in page
@@ -374,8 +511,8 @@ def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
     assert "data-learning-answer-textarea" in page
     assert "data-draft-status" in page
     assert "learning-agent-draft-week-" in page
-    assert "Concept Cards" not in page
-    assert "Reading Material" not in page
+    assert "Concept Cards" in page
+    assert "Reading Material" in page
     assert "Open Learn" not in page
 
 
@@ -521,6 +658,6 @@ def test_render_page_autoloads_learning_assist_only_once(monkeypatch, tmp_path):
     first_page = render_page()
     second_page = render_page()
 
-    assert "Current Assessment" in first_page
+    assert "Learn Workspace" in first_page
     assert "Submit Answer" in second_page
     assert provider.learning_generate_calls == 1

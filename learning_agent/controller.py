@@ -14,6 +14,7 @@ from learning_agent.models import (
     ClassifiedQuestionBankPayload,
     CheckpointState,
     ConceptCardPayload,
+    ConceptCard,
     EvidenceQuestionPayload,
     FigureAsset,
     GateSession,
@@ -25,6 +26,7 @@ from learning_agent.models import (
     QuestionAttempt,
     RawQuestionBankPayload,
     RawLearningQuestion,
+    ReadingMaterialPayload,
     ReadingSection,
     ReflectionRecord,
     TaskSession,
@@ -128,9 +130,6 @@ class LearningController:
         raw_errors = self._validate_raw_questions(raw_questions)
         if raw_errors:
             raise LearningAgentError("Learning Assist raw question bank failed validation: " + "; ".join(raw_errors))
-        concept_payload = provider.generate_concept_cards(week_spec, ledger.state, raw_questions)
-        if not isinstance(concept_payload, ConceptCardPayload):
-            concept_payload = ConceptCardPayload.model_validate(concept_payload)
         classified_payload = provider.classify_question_bank(week_spec, ledger.state, raw_questions)
         if not isinstance(classified_payload, ClassifiedQuestionBankPayload):
             classified_payload = ClassifiedQuestionBankPayload.model_validate(classified_payload)
@@ -139,9 +138,23 @@ class LearningController:
             raise LearningAgentError(
                 "Learning Assist classified question bank failed validation: " + "; ".join(question_errors)
             )
-        concept_cards = self._decorate_concept_cards(concept_payload.concept_cards)
+        reading_payload = provider.generate_reading_material(week_spec, ledger.state, classified_payload.questions)
+        if not isinstance(reading_payload, ReadingMaterialPayload):
+            reading_payload = ReadingMaterialPayload.model_validate(reading_payload)
+        reading_sections = self._normalize_reading_sections(classified_payload.questions, reading_payload.reading_sections)
+        reading_errors = self._validate_reading_sections(week_spec, classified_payload.questions, reading_sections)
+        if reading_errors:
+            raise LearningAgentError("Learning Assist reading generation failed validation: " + "; ".join(reading_errors))
+        concept_payload = provider.generate_concept_cards_from_reading(week_spec, ledger.state, reading_sections)
+        if not isinstance(concept_payload, ConceptCardPayload):
+            concept_payload = ConceptCardPayload.model_validate(concept_payload)
+        concept_cards = self._normalize_concept_cards(reading_sections, concept_payload.concept_cards)
+        concept_errors = self._validate_concept_cards(reading_sections, concept_cards)
+        if concept_errors:
+            raise LearningAgentError("Learning Assist concept-card generation failed validation: " + "; ".join(concept_errors))
+        reading_sections = self._link_reading_sections_to_concepts(reading_sections, concept_cards)
         figures = self._build_figure_assets(week_spec, concept_cards, classified_payload.questions)
-        reading_sections = self._build_reading_sections(week_spec, concept_cards, figures, classified_payload.questions)
+        concept_cards = self._decorate_concept_cards(concept_cards)
         questions = self._link_questions_to_content(classified_payload.questions, concept_cards, reading_sections)
         session = LearningSession(
             week=week_spec.number,
@@ -496,86 +509,105 @@ class LearningController:
 
         return [self._figure_asset_for_key(key) for key in figure_keys]
 
-    def _build_reading_sections(
+    def _normalize_reading_sections(
         self,
-        week_spec: WeekSpec,
-        concept_cards: list,
-        figures: list[FigureAsset],
         questions: list[LearningQuestion],
+        reading_sections: list[ReadingSection],
     ) -> list[ReadingSection]:
-        sections: list[ReadingSection] = []
-        figure_ids = {figure.id for figure in figures}
+        if not reading_sections:
+            return []
 
-        sections.append(
-            ReadingSection(
-                id="week_map",
-                title="How This Week Works",
-                body_markdown=(
-                    f"**Goal:** {week_spec.goal}\n\n"
-                    f"Work inside **{', '.join(week_spec.active_dirs) or '(no active dirs)'}** and produce:\n- "
-                    + "\n- ".join(week_spec.required_files or ["(none)"])
-                    + "\n\nTreat the learning material as an open-book reference for the questions on the right. "
-                    "You should be able to point from each answer back to a specific concept, file, or measurement."
-                ),
-                figure_ids=["server_architecture"] if "server_architecture" in figure_ids else [],
-                related_concept_ids=[card.id for card in concept_cards],
-            )
-        )
-
-        for card in concept_cards:
-            figure_id = self._key_from_image_path(card.image_path)
-            sections.append(
-                ReadingSection(
-                    id=f"section-{card.id}",
-                    title=card.title,
-                    body_markdown=self._reading_markdown_for_card(card, week_spec),
-                    figure_ids=[figure_id] if figure_id in figure_ids else [],
-                    related_concept_ids=[card.id],
+        known_question_ids = {question.id for question in questions}
+        normalized_sections: list[ReadingSection] = []
+        used_ids: set[str] = set()
+        for index, section in enumerate(reading_sections, start=1):
+            raw_id = (section.id or "").strip() or (section.title or "").strip() or f"reading-{index}"
+            section_id = re.sub(r"[^a-z0-9_]+", "-", raw_id.lower()).strip("-") or f"reading_{index}"
+            if section_id in used_ids:
+                suffix = 2
+                while f"{section_id}-{suffix}" in used_ids:
+                    suffix += 1
+                section_id = f"{section_id}-{suffix}"
+            used_ids.add(section_id)
+            title = (section.title or "").strip() or self._humanize_label(section_id)
+            normalized_sections.append(
+                section.model_copy(
+                    update={
+                        "id": section_id,
+                        "title": title,
+                        "body_markdown": section.body_markdown.strip(),
+                        "figure_ids": [],
+                        "related_concept_ids": [],
+                    }
                 )
             )
 
-        sections.append(
-            ReadingSection(
-                id="build_artifacts",
-                title="What You Need To Build",
-                body_markdown=(
-                    "Keep your implementation answers grounded in the actual files and tasks for this week.\n\n"
-                    "Tasks:\n- "
-                    + "\n- ".join(week_spec.tasks or ["Translate the goal into working artifacts."])
-                    + "\n\nRequired files:\n- "
-                    + "\n- ".join(week_spec.required_files or ["(none)"])
-                ),
-                figure_ids=[figure_id for figure_id in ("server_architecture", "benchmark_flow") if figure_id in figure_ids],
-            )
+        week_map_index = next(
+            (
+                index
+                for index, section in enumerate(normalized_sections)
+                if section.id == "week_map" or section.title.strip().lower() == "how this week works"
+            ),
+            None,
         )
+        if week_map_index is not None and week_map_index != 0:
+            week_map = normalized_sections.pop(week_map_index)
+            week_map = week_map.model_copy(update={"id": "week_map", "title": "How This Week Works"})
+            normalized_sections.insert(0, week_map)
+        elif week_map_index == 0:
+            normalized_sections[0] = normalized_sections[0].model_copy(update={"id": "week_map", "title": "How This Week Works"})
 
-        if week_spec.required_metrics:
-            sections.append(
-                ReadingSection(
-                    id="measure_and_verify",
-                    title="How To Measure And Verify",
-                    body_markdown=(
-                        "Measurement is part of the assignment, not an afterthought.\n\n"
-                        "Required metrics:\n- "
-                        + "\n- ".join(week_spec.required_metrics)
-                        + "\n\nWhen you answer a question about performance, explain **what was measured**, "
-                        "**how it was measured**, and **why the evidence is trustworthy**."
-                    ),
-                    figure_ids=[figure_id for figure_id in ("latency_throughput", "benchmark_flow") if figure_id in figure_ids],
+        return normalized_sections
+
+    def _normalize_concept_cards(
+        self,
+        reading_sections: list[ReadingSection],
+        concept_cards: list[ConceptCard],
+    ) -> list[ConceptCard]:
+        known_section_ids = {section.id for section in reading_sections}
+        normalized_cards: list[ConceptCard] = []
+        used_ids: set[str] = set()
+        for index, card in enumerate(concept_cards, start=1):
+            title = card.title.strip() or self._humanize_label(card.concept)
+            concept = card.concept.strip() or self._slugify(title).replace("-", "_")
+            card_id = card.id.strip() or self._slugify(concept or title or f"concept-{index}")
+            if card_id in used_ids:
+                suffix = 2
+                while f"{card_id}-{suffix}" in used_ids:
+                    suffix += 1
+                card_id = f"{card_id}-{suffix}"
+            used_ids.add(card_id)
+            related_section_ids = [section_id for section_id in card.related_section_ids if section_id in known_section_ids]
+            normalized_cards.append(
+                card.model_copy(
+                    update={
+                        "id": card_id,
+                        "concept": concept,
+                        "title": title,
+                        "explanation": card.explanation.strip(),
+                        "why_it_matters": card.why_it_matters.strip(),
+                        "common_mistake": card.common_mistake.strip(),
+                        "quick_check_question": (card.quick_check_question or "").strip() or None,
+                        "related_section_ids": related_section_ids,
+                    }
                 )
             )
+        return normalized_cards
 
-        linked_questions = self._link_questions_to_content(questions, concept_cards, sections)
-        by_section: dict[str, list[str]] = {section.id: [] for section in sections}
-        for question in linked_questions:
-            for section_id in question.related_section_ids:
-                if section_id in by_section:
-                    by_section[section_id].append(question.id)
-
-        return [
-            section.model_copy(update={"related_question_ids": by_section.get(section.id, [])})
-            for section in sections
-        ]
+    def _link_reading_sections_to_concepts(
+        self,
+        sections: list[ReadingSection],
+        concept_cards: list,
+    ) -> list[ReadingSection]:
+        linked_sections: list[ReadingSection] = []
+        for section in sections:
+            related_concept_ids = [
+                card.id
+                for card in concept_cards
+                if section.id in getattr(card, "related_section_ids", [])
+            ]
+            linked_sections.append(section.model_copy(update={"related_concept_ids": related_concept_ids}))
+        return linked_sections
 
     def _link_questions_to_content(
         self,
@@ -585,49 +617,16 @@ class LearningController:
     ) -> list[LearningQuestion]:
         linked_questions: list[LearningQuestion] = []
         for question in questions:
-            related_concept_ids = [card.id for card in concept_cards if self._question_matches_card(question, card)]
-            related_section_ids = [
-                section.id
-                for section in reading_sections
-                if set(section.related_concept_ids).intersection(related_concept_ids)
-            ]
-
-            prompt_lower = question.prompt_text.lower()
-            if question.type == "implementation":
-                self._append_if_missing(related_section_ids, "build_artifacts")
-            if any(token in prompt_lower for token in ("latency", "throughput", "tokens per second", "tps", "benchmark")):
-                self._append_if_missing(related_section_ids, "measure_and_verify")
-            if not related_section_ids:
-                self._append_if_missing(related_section_ids, "week_map")
+            related_concept_ids = self._best_concept_ids_for_question(question, concept_cards)
 
             linked_questions.append(
                 question.model_copy(
                     update={
                         "related_concept_ids": related_concept_ids,
-                        "related_section_ids": related_section_ids,
                     }
                 )
             )
         return linked_questions
-
-    def _question_matches_card(self, question: LearningQuestion, card) -> bool:
-        card_tokens = self._match_tokens(f"{card.id} {card.concept} {card.title}")
-        question_tokens = self._match_tokens(
-            f"{question.id} {question.prompt_text} {' '.join(str(value) for value in question.roadmap_anchor.values())}"
-        )
-        return bool(card_tokens.intersection(question_tokens))
-
-    def _reading_markdown_for_card(self, card, week_spec: WeekSpec) -> str:
-        blocks = [
-            card.explanation.strip(),
-            f"**Why it matters:** {card.why_it_matters.strip()}",
-            f"**Common mistake:** {card.common_mistake.strip()}",
-        ]
-        if card.quick_check_question:
-            blocks.append(f"**Quick check:** {card.quick_check_question.strip()}")
-        if week_spec.required_files:
-            blocks.append("This concept shows up directly in: " + ", ".join(week_spec.required_files) + ".")
-        return "\n\n".join(blocks)
 
     def _figure_asset_for_key(self, key: str) -> FigureAsset:
         library = {
@@ -885,6 +884,176 @@ class LearningController:
             errors.append(f"expected at least 12 classified Tier 3 questions but received {len(tier3)}")
 
         return errors
+
+    def _validate_reading_sections(
+        self,
+        week_spec: WeekSpec,
+        questions: list[LearningQuestion],
+        reading_sections: list[ReadingSection],
+    ) -> list[str]:
+        errors: list[str] = []
+        if len(reading_sections) < 3:
+            errors.append(f"expected at least 3 reading blocks but received {len(reading_sections)}")
+        if not reading_sections:
+            return errors
+
+        if reading_sections[0].id != "week_map":
+            errors.append("the first reading block must be week_map")
+        if reading_sections[0].title.strip() != "How This Week Works":
+            errors.append("the first reading block title must be 'How This Week Works'")
+
+        banned_patterns = [
+            r"\bchapter\b",
+            r"\bsection\b",
+            r"\bconcept cards?\b",
+            r"\bquestion bank\b",
+            r"\brubric\b",
+            r"\bui\b",
+        ]
+
+        total_word_count = 0
+        for reading_section in reading_sections:
+            text = " ".join(part for part in (reading_section.title, reading_section.body_markdown) if part).strip()
+            total_word_count += len(reading_section.body_markdown.split())
+            if not reading_section.title.strip():
+                errors.append(f"reading block {reading_section.id!r} has an empty title")
+            if len(reading_section.body_markdown.split()) < 35:
+                errors.append(f"reading block {reading_section.id!r} is too thin to teach from")
+            for pattern in banned_patterns:
+                if re.search(pattern, text, flags=re.IGNORECASE):
+                    errors.append(f"reading block {reading_section.id!r} uses internal product language: {pattern}")
+                    break
+
+        if total_word_count < 220:
+            errors.append("reading material is too short to support the current week's question set")
+
+        return errors
+
+    def _validate_concept_cards(
+        self,
+        reading_sections: list[ReadingSection],
+        concept_cards: list[ConceptCard],
+    ) -> list[str]:
+        errors: list[str] = []
+        if len(concept_cards) < 3:
+            errors.append(f"expected at least 3 concept cards but received {len(concept_cards)}")
+        if not concept_cards:
+            return errors
+
+        known_section_ids = {section.id for section in reading_sections}
+        ids = [card.id for card in concept_cards]
+        if len(set(ids)) != len(ids):
+            errors.append("concept card ids must be unique")
+
+        banned_patterns = [
+            r"\bchapter\b",
+            r"\bsection\b",
+            r"\bquestion bank\b",
+            r"\brubric\b",
+            r"\bui\b",
+        ]
+
+        linked_section_ids: set[str] = set()
+        for card in concept_cards:
+            if not card.title.strip():
+                errors.append(f"concept card {card.id!r} has an empty title")
+            if not card.explanation.strip():
+                errors.append(f"concept card {card.id!r} has an empty explanation")
+            if not card.why_it_matters.strip():
+                errors.append(f"concept card {card.id!r} has an empty why_it_matters")
+            if not card.common_mistake.strip():
+                errors.append(f"concept card {card.id!r} has an empty common_mistake")
+            if not card.related_section_ids:
+                errors.append(f"concept card {card.id!r} is not linked to any reading blocks")
+            invalid_section_ids = [section_id for section_id in card.related_section_ids if section_id not in known_section_ids]
+            if invalid_section_ids:
+                errors.append(
+                    f"concept card {card.id!r} references unknown reading blocks: {', '.join(sorted(invalid_section_ids))}"
+                )
+            linked_section_ids.update(section_id for section_id in card.related_section_ids if section_id in known_section_ids)
+            text = " ".join(
+                part
+                for part in (
+                    card.title,
+                    card.explanation,
+                    card.why_it_matters,
+                    card.common_mistake,
+                    card.quick_check_question or "",
+                )
+                if part
+            )
+            for pattern in banned_patterns:
+                if re.search(pattern, text, flags=re.IGNORECASE):
+                    errors.append(f"concept card {card.id!r} uses internal product language: {pattern}")
+                    break
+
+        if linked_section_ids != known_section_ids:
+            missing_links = sorted(known_section_ids - linked_section_ids)
+            if missing_links:
+                errors.append("concept cards do not cover all reading blocks: " + ", ".join(missing_links))
+
+        return errors
+
+    def _best_reading_section_id_for_question(
+        self,
+        question: LearningQuestion,
+        reading_sections: list[ReadingSection],
+    ) -> str:
+        best_section_id = reading_sections[0].id
+        best_score = -1
+        for reading_section in reading_sections:
+            score = self._reading_section_match_score(question, reading_section)
+            if score > best_score:
+                best_score = score
+                best_section_id = reading_section.id
+        return best_section_id
+
+    def _reading_section_match_score(self, question: LearningQuestion, reading_section: ReadingSection) -> int:
+        question_tokens = self._match_tokens(question.prompt_text)
+        section_text = f"{reading_section.title} {reading_section.body_markdown}".lower()
+        section_tokens = self._match_tokens(section_text)
+        score = len(question_tokens & section_tokens)
+        if question.type == "implementation" and any(
+            token in section_text for token in ("file", "build", "implement", "artifact", "deliverable", "code")
+        ):
+            score += 3
+        if any(token in question.prompt_text.lower() for token in ("latency", "throughput", "benchmark", "tokens per second", "tps", "measure", "verify")):
+            if any(token in section_text for token in ("latency", "throughput", "benchmark", "metric", "measure", "verify", "tokens per second", "tps")):
+                score += 3
+        if any(token in question.prompt_text.lower() for token in ("prefill", "decode", "token", "generation", "cache")):
+            if any(token in section_text for token in ("prefill", "decode", "token", "generation", "cache")):
+                score += 3
+        if any(token in question.prompt_text.lower() for token in ("request", "response", "api", "server", "pipeline", "inference", "serving")):
+            if any(token in section_text for token in ("request", "response", "api", "server", "pipeline", "inference", "serving")):
+                score += 3
+        return score
+
+    def _best_concept_ids_for_question(self, question: LearningQuestion, concept_cards: list[ConceptCard]) -> list[str]:
+        ranked_cards: list[tuple[int, str]] = []
+        question_tokens = self._match_tokens(question.prompt_text)
+        anchor_tokens = self._match_tokens(json.dumps(question.roadmap_anchor, sort_keys=True))
+        for card in concept_cards:
+            card_text = " ".join(
+                part
+                for part in (
+                    card.id,
+                    card.concept,
+                    card.title,
+                    card.explanation,
+                    card.why_it_matters,
+                    card.common_mistake,
+                    card.quick_check_question or "",
+                )
+                if part
+            )
+            card_tokens = self._match_tokens(card_text)
+            score = len(question_tokens & card_tokens) + len(anchor_tokens & card_tokens)
+            if score > 0:
+                ranked_cards.append((score, card.id))
+        ranked_cards.sort(key=lambda item: (-item[0], item[1]))
+        if ranked_cards:
+            return [card_id for _score, card_id in ranked_cards[:3]]
+        return [card.id for card in concept_cards[:2]]
 
     def _required_question_ids(self, session: LearningSession) -> list[str]:
         return [

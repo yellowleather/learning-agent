@@ -217,16 +217,25 @@ Deep conceptual probes are valuable but should not automatically become mandator
 The In-Context Learning Loop for a given week is:
 
 1. Load the current unlocked week.
-2. Optionally show concept cards if `Learning Assist` is enabled in the UI.
-3. Ask a sizable set of `concept` and `implementation` questions.
-4. Score the responses against current-week rubrics.
-5. Generate the Junior SWE task for the week.
-6. Implement and verify the required artifacts.
-7. Collect a structured observation from the resulting artifact or benchmark.
-8. If the observation is sufficiently reliable, ask `evidence_based` questions tied to that observation.
-9. Collect a reflection from the user.
-10. Decide whether the week has satisfied conceptual, implementation, verification, and evidence reliability gates.
-11. Unlock the next week only after all required gates pass and the user approves.
+2. Generate a sizable set of `concept` and `implementation` questions from the current week plan.
+3. Generate blog-style reading material scoped to the week and sufficient to answer those questions.
+The first block should orient the learner to the week, and the remaining blocks should be generated from the actual question themes rather than from a fixed Week 1 template.
+4. Generate concept cards from the reading material so they act as anchors to that explainer.
+5. Present the reading and cards in the Learn UI while the user answers the question set.
+6. Score the responses against current-week rubrics.
+7. Generate the Junior SWE task for the week.
+8. Implement and verify the required artifacts.
+9. Collect a structured observation from the resulting artifact or benchmark.
+10. If the observation is sufficiently reliable, ask `evidence_based` questions tied to that observation.
+11. Collect a reflection from the user.
+12. Decide whether the week has satisfied conceptual, implementation, verification, and evidence reliability gates.
+13. Unlock the next week only after all required gates pass and the user approves.
+
+Design rule:
+
+- concept cards should not directly determine the question set,
+- the blog-style reading material is the primary learning surface,
+- concept cards are secondary anchors to help the user retain and navigate that reading.
 
 ## 10. Subgates Within a Week
 
@@ -522,7 +531,8 @@ This feature fits Phase 1 if implemented incrementally.
 
 ### 18.1 Phase 1 Additions
 
-- extend the provider layer to generate concept cards and question banks,
+- extend the provider layer to generate question banks,
+- extend the controller to derive reading sections and concept cards from that question bank,
 - add question metadata and observation models,
 - add reflection capture,
 - add the `evidence_reliable` gate,

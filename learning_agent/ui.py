@@ -22,6 +22,7 @@ ASSET_ROOT = Path(__file__).resolve().parent / "assets"
 ICON_PATH = ASSET_ROOT / "icon.png"
 DEFAULT_COURSE_WEEKS = 8
 MARATHON_TOTAL_MILES = 26.2
+MARATHON_RUNNER_POSITION_NUDGE_PERCENT = 0.35
 
 
 def serve_ui(host: str = DEFAULT_UI_HOST, port: int = DEFAULT_UI_PORT) -> None:
@@ -1054,10 +1055,10 @@ def render_page(
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }}
     .concept-card {{
-      overflow: hidden;
-      border: 1px solid rgba(199, 210, 218, 0.9);
-      border-radius: 18px;
-      background: rgba(255, 255, 255, 0.84);
+      overflow: visible;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
     }}
     .concept-card figure, .reading-figure {{
       margin: 0;
@@ -1074,22 +1075,66 @@ def render_page(
       object-fit: cover;
     }}
     .concept-card-body {{
-      padding: 16px;
+      padding: 0;
       display: grid;
-      gap: 10px;
+      gap: 8px;
     }}
-    .card-chip {{
+    .concept-card-details {{
+      margin-top: 2px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+    }}
+    .concept-card-details summary {{
+      cursor: pointer;
       display: inline-flex;
-      width: fit-content;
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: var(--accent-soft);
-      color: var(--accent-dark);
+      align-items: center;
+      gap: 10px;
+      list-style: none;
       font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
-      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--accent-dark);
+      font-size: 0.86rem;
+    }}
+    .concept-card-details summary::-webkit-details-marker {{
+      display: none;
+    }}
+    .concept-card-details summary::before {{
+      content: "▶";
+      font-size: 0.95rem;
+      line-height: 1;
+      color: var(--accent-dark);
+      transition: transform 140ms ease;
+      opacity: 0.9;
+    }}
+    .concept-card-details[open] summary::before {{
+      transform: rotate(90deg);
+    }}
+    .concept-card-details-body {{
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }}
+    .concept-card-title {{
+      margin: 0;
+      font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+      font-size: 0.9rem;
       font-weight: 700;
+      line-height: 1.3;
+      color: var(--text);
+    }}
+    .learn-orientation-panel {{
+      margin-bottom: 18px;
+    }}
+    .learn-orientation-kicker {{
+      margin-bottom: 10px;
+      font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      color: var(--accent-dark);
     }}
     .reading-section {{
       border-top: 1px solid rgba(199, 210, 218, 0.85);
@@ -2396,6 +2441,57 @@ def render_page(
       font-size: clamp(1.12rem, 1.55vw, 1.7rem);
       line-height: 1.14;
     }}
+    .learn-stage-shell-v3 {{
+      display: grid;
+      gap: 14px;
+    }}
+    .learn-stage-header-v3 {{
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 16px;
+      flex-wrap: wrap;
+      padding: 4px 2px 2px;
+    }}
+    .learn-stage-copy-v3 {{
+      display: grid;
+      gap: 8px;
+      max-width: 44rem;
+    }}
+    .learn-stage-kicker-v3 {{
+      font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-dark);
+    }}
+    .learn-stage-copy-v3 h2 {{
+      margin: 0;
+      font-size: 1.18rem;
+      line-height: 1.18;
+    }}
+    .learn-stage-copy-v3 p {{
+      margin: 0;
+    }}
+    .learn-stage-meta-v3 {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }}
+    .learn-empty-card-v3 {{
+      min-height: 100%;
+    }}
+    .question-prompt-v3 {{
+      margin: 0;
+      font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+      font-size: clamp(1.12rem, 1.55vw, 1.42rem);
+      line-height: 1.18;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      color: var(--text);
+    }}
     .guidance-block-v3 {{
       display: grid;
       gap: 10px;
@@ -3133,6 +3229,7 @@ def render_marathon_strip(
     runner_visual_percent = checkpoint_positions[completed_steps] + (
         checkpoint_positions[completed_steps + 1] - checkpoint_positions[completed_steps]
     ) * step_fraction
+    runner_visual_percent += MARATHON_RUNNER_POSITION_NUDGE_PERCENT
     runner_visual_percent = max(runner_start_percent, min(track_end_percent, runner_visual_percent))
     track_fill_percent = 0.0
     if track_end_percent > track_start_percent:
@@ -4569,11 +4666,12 @@ def render_body(status: Optional[dict], initialized: bool, selected_question_id:
         if current_step == "learn"
         else render_generic_assessment_v3(status, current_step)
     )
+    supporting_section = "" if current_step == "learn" else render_implementation_section_v3(status)
     return f"""
     <section class="implementation-shell-v3">
       {render_stepper_bar_v3(status, current_step, initialized=True)}
       {assessment}
-      {render_implementation_section_v3(status)}
+      {supporting_section}
     </section>
     """
 
@@ -4617,70 +4715,55 @@ def render_learning_assessment_v3(status: dict, learning_session: dict, selected
     progress = status.get("question_progress", {})
     questions = learning_session.get("questions", [])
     attempts = latest_attempts(learning_session)
+    figures = {figure["id"]: figure for figure in learning_session.get("figures", [])}
+    orientation_section, reading_sections = split_learning_reading_sections(learning_session.get("reading_sections", []))
     selected_question = select_learning_question(questions, selected_question_id)
-    if not selected_question:
-        return f"""
-        <div class="assessment-grid-v3" id="current-assessment">
-          <article class="assessment-card-v3">
-            <div class="eyebrow-row-v3">
-              <strong>Current Assessment</strong>
-              <span>Learning assist unavailable</span>
-            </div>
-            <h2 class="question-heading-v3">Generate the learning brief to load questions, guidance, and resources for this week.</h2>
-            <div class="assessment-actions-v3">
-              <form method="post" action="/action" class="form-grid">
-                <input type="hidden" name="action" value="learning_generate">
-                <button type="submit">Generate Learning Brief</button>
-              </form>
-            </div>
-          </article>
-          {render_assessment_side_v3(status, learning_session, None, progress)}
-        </div>
-        """
-
-    question_index = next((index for index, question in enumerate(questions) if question["id"] == selected_question["id"]), 0)
-    guidance_items = render_assessment_guidance_items(selected_question, learning_session)
-    tag_items = "".join(
-        f"<span class='assessment-tag-v3'>{escape(tag)}</span>" for tag in question_concept_tags(selected_question, learning_session)
+    cards_html = "".join(render_concept_card(card) for card in learning_session.get("concept_cards", []))
+    if not cards_html:
+        cards_html = "<p class='muted'>No concept cards generated yet.</p>"
+    sections_html = "".join(
+        render_reading_section(section, figures) for section in reading_sections
+    ) or "<p class='muted'>No reading material generated yet.</p>"
+    orientation_html = render_learning_orientation_panel(orientation_section)
+    workspace_html = (
+        render_learning_workspace(selected_question, questions, attempts, figures, progress)
+        if selected_question
+        else render_learning_workspace_empty_v3(progress)
     )
-    question_modal = render_question_list_modal(questions, attempts, selected_question["id"])
+    question_modal = render_question_list_modal(questions, attempts, selected_question["id"] if selected_question else None)
     return f"""
-    <div class="assessment-grid-v3" id="current-assessment">
-      <article class="assessment-card-v3">
-        <div class="eyebrow-row-v3">
-          <strong>Current Assessment</strong>
-          <span>Question {question_index + 1} of {len(questions)}</span>
+    <section class="learn-stage-shell-v3" id="current-assessment">
+      <div class="learn-stage-header-v3">
+        <div class="learn-stage-copy-v3">
+          <span class="learn-stage-kicker-v3">Learn Workspace</span>
+          <h2>Study on the left and answer on the right.</h2>
+          <p class="muted">This surface is specific to the active Learn step. Build and Verify content stay out of the center workspace until those steps become active.</p>
         </div>
-        <h2 class="question-heading-v3">{escape(selected_question['prompt_text'])}</h2>
-        <div class="guidance-block-v3">
-          <div class="guidance-row-v3">
-            <strong>Guidance</strong>
-            <ul>{guidance_items}</ul>
+        <div class="learn-stage-meta-v3">
+          <span class="assessment-tag-v3">Open-book mode</span>
+          <span class="assessment-tag-v3">Concept anchors</span>
+        </div>
+      </div>
+      {orientation_html}
+      <section class="learn-workspace learning-stage-shell">
+        <div class="reading-column">
+          <div class="reading-column-scroll" data-reading-scroll>
+            <article class="subpanel stage-surface">
+              <h3>Concept Cards</h3>
+              <div class="concept-card-grid">{cards_html}</div>
+            </article>
+            <article class="subpanel stage-surface">
+              <h3>Reading Material</h3>
+              <div class="reading-stack">{sections_html}</div>
+            </article>
           </div>
         </div>
-        <div class="assessment-expected-v3">
-          <strong>Expected:</strong>
-          <span>System-level explanation that distinguishes the phases and ties them back to inference behavior.</span>
+        <div class="questions-column">
+          {workspace_html}
         </div>
-        <div class="assessment-tags-v3">
-          {tag_items}
-        </div>
-        <form method="post" action="/action" class="form-grid" data-learning-answer-form>
-          <input type="hidden" name="action" value="learning_answer">
-          <input type="hidden" name="question_id" value="{escape(selected_question['id'])}">
-          <label>Answer
-            <textarea class="assessment-textarea-v3" name="learning_answer" placeholder="Answer the current assessment in a way that would help an engineer build and debug the system." data-learning-answer-textarea></textarea>
-          </label>
-          <p class="fine-print" data-draft-status></p>
-          <div class="assessment-actions-v3">
-            <button type="submit">Submit Answer</button>
-            <button type="button" class="button-link secondary" data-question-modal-open>See Full Question List</button>
-          </div>
-        </form>
-      </article>
-      {render_assessment_side_v3(status, learning_session, selected_question, progress)}
-    </div>
-    {question_modal}
+      </section>
+      {question_modal}
+    </section>
     """
 
 
@@ -4854,6 +4937,36 @@ def render_toolbar_action_form(action: str, label: str, secondary: bool = False,
     )
 
 
+def render_learning_workspace_empty_v3(progress: dict) -> str:
+    required_passed = int(progress.get("required_passed", 0))
+    required_total = int(progress.get("required_total", 0))
+    progress_percent = 0 if required_total == 0 else round((required_passed / required_total) * 100)
+    return f"""
+    <article class="subpanel question-column learn-empty-card-v3" id="question-workspace">
+      <div class="step-title-row">
+        <div>
+          <h3>Generate Learning Brief</h3>
+          <p class="fine-print">Load question-linked concept cards, reading material, and the first assessment set for this week.</p>
+        </div>
+      </div>
+      <div class="progress-block" aria-label="Question progress">
+        <div class="progress-meta">
+          <strong>{required_passed}/{required_total} required questions passed</strong>
+          <span>{progress_percent}% complete</span>
+        </div>
+        <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="{required_total}" aria-valuenow="{required_passed}" aria-valuetext="{progress_percent}% complete">
+          <div class="progress-fill" style="width: {progress_percent}%;"></div>
+        </div>
+      </div>
+      <p class="muted">Only the Learn workspace is active here. The Build implementation surface and the Verify evidence surface stay hidden until those steps become current.</p>
+      <form method="post" action="/action" class="form-grid">
+        <input type="hidden" name="action" value="learning_generate">
+        <button type="submit">Generate Learning Brief</button>
+      </form>
+    </article>
+    """
+
+
 def render_implementation_section_v3(status: dict) -> str:
     task_label = "Refresh Build Brief" if status.get("task_generated") else "Create Build Brief"
     return f"""
@@ -5009,7 +5122,7 @@ def render_learning_stage(
     questions = (learning_session or {}).get("questions", [])
     attempts = latest_attempts(learning_session)
     figures = {figure["id"]: figure for figure in (learning_session or {}).get("figures", [])}
-    reading_sections = (learning_session or {}).get("reading_sections", [])
+    orientation_section, reading_sections = split_learning_reading_sections((learning_session or {}).get("reading_sections", []))
     selected_question = select_learning_question(questions, selected_question_id)
 
     cards_html = "".join(render_concept_card(card) for card in (learning_session or {}).get("concept_cards", []))
@@ -5235,6 +5348,17 @@ def render_left_sidebar(status: Optional[dict], initialized: bool) -> str:
           </article>
         </aside>
         """
+    current_step = current_workflow_step(status)
+    deliverables_action = (
+        "<span class='button-link secondary is-disabled sidebar-button-v3'>Available In Build</span>"
+        if current_step == "learn"
+        else "<a class='button-link secondary sidebar-button-v3' href='#implementation'>View all</a>"
+    )
+    metrics_action = (
+        "<span class='button-link secondary is-disabled sidebar-button-v3'>Available In Verify</span>"
+        if current_step == "learn"
+        else "<a class='button-link secondary sidebar-button-v3' href='#implementation'>Record</a>"
+    )
     return f"""
     <aside id="left-sidebar" class="workspace-sidebar-v3">
       <article class="panel sidebar-panel-minimal-v3">
@@ -5256,14 +5380,14 @@ def render_left_sidebar(status: Optional[dict], initialized: bool) -> str:
         <ul class="deliverable-list-v3">
           {render_deliverable_rows_v3(status)}
         </ul>
-        <a class="button-link secondary sidebar-button-v3" href="#implementation">View all</a>
+        {deliverables_action}
       </article>
       <article class="panel sidebar-card-v3">
         <h2>Benchmark Metrics</h2>
         <ul class="metric-list-v3">
           {render_metric_rows_v3(status)}
         </ul>
-        <a class="button-link secondary sidebar-button-v3" href="#implementation">Record</a>
+        {metrics_action}
       </article>
       <article class="panel sidebar-card-v3">
         <h2>Approval Readiness</h2>
@@ -5284,6 +5408,7 @@ def render_right_sidebar(status: Optional[dict], initialized: bool, selected_que
             current_step="setup",
             selected_question=None,
             resources=[],
+            starter_prompts=[],
         )
     else:
         current_step = current_workflow_step(status)
@@ -5296,6 +5421,7 @@ def render_right_sidebar(status: Optional[dict], initialized: bool, selected_que
             current_step=current_step,
             selected_question=selected_question,
             resources=assistant_resources_v3(status, learning_session, selected_question),
+            starter_prompts=build_topic_chat_starter_prompts(learning_session, selected_question),
         )
     return f"""
     <aside id="right-sidebar" class="workspace-sidebar-v3 workspace-sidebar-right-v3">
@@ -5311,11 +5437,12 @@ def render_topic_chat_panel(
     current_step: str,
     selected_question: Optional[dict],
     resources: list[str],
+    starter_prompts: list[str],
 ) -> str:
     week_value = str(week) if week is not None else "uninitialized"
     disabled_attr = " disabled" if not initialized else ""
     step_label = workflow_label(current_step) if current_step in {"learn", "build", "verify", "approve"} else "Set Up"
-    starter_prompts = render_topic_chat_starters()
+    starter_prompts_html = render_topic_chat_starters(starter_prompts)
     disabled_copy = (
         "<p class='fine-print'>This assistant unlocks after initialization because the tutor needs a live week context.</p>"
         if not initialized
@@ -5335,7 +5462,7 @@ def render_topic_chat_panel(
       <article class="assistant-card-v3">
         <h3>How can I help?</h3>
         <div class="assistant-quick-actions-v3">
-          {starter_prompts}
+          {starter_prompts_html}
         </div>
       </article>
       <section class="assistant-section-v3">
@@ -5390,13 +5517,99 @@ def render_topic_chat_panel(
     """
 
 
-def render_topic_chat_starters() -> str:
-    prompts = [
-        "Explain prefill vs decode",
-        "Show example pipeline",
-        "Common pitfalls",
-        "Performance tips",
-    ]
+def build_topic_chat_starter_prompts(learning_session: dict, selected_question: Optional[dict]) -> list[str]:
+    prompts: list[str] = []
+    questions = learning_session.get("questions", [])
+    concept_cards = learning_session.get("concept_cards", [])
+    reading_sections = learning_session.get("reading_sections", [])
+
+    focus_question = selected_question or (questions[0] if questions else None)
+    if focus_question and focus_question.get("prompt_text"):
+        starter_topic = beginner_topic_from_question(focus_question["prompt_text"])
+        prompts.append(f"I'm new to this. Can you explain {starter_topic} in simple terms?")
+
+    first_content_section = next(
+        (section for section in reading_sections if section.get("id") != "week_map" and section.get("title")),
+        None,
+    )
+    if first_content_section:
+        prompts.append(
+            f'Can you walk me through "{first_content_section["title"]}" like I\'m just getting started?'
+        )
+
+    first_card = next((card for card in concept_cards if card.get("title") or card.get("concept")), None)
+    if first_card:
+        card_title = first_card.get("title") or humanize_section_label(first_card.get("concept", "concept"))
+        prompts.append(f'What does "{card_title}" mean, and why does it matter this week?')
+
+    measurement_section = find_reading_section_for_theme(
+        reading_sections,
+        ("latency", "throughput", "benchmark", "metric", "measure", "verify", "tokens per second", "tps"),
+    )
+    if measurement_section:
+        prompts.append(
+            f'What should I pay attention to when reading "{measurement_section.get("title", "measurement")}"?'
+        )
+
+    if len(prompts) < 4:
+        build_section = find_reading_section_for_theme(
+            reading_sections,
+            ("file", "build", "implement", "artifact", "deliverable", "code"),
+        )
+        if build_section:
+            prompts.append(
+                f'How does "{build_section.get("title", "the build work")}" connect to the files I will touch?'
+            )
+
+    deduped_prompts: list[str] = []
+    for prompt in prompts:
+        if prompt not in deduped_prompts:
+            deduped_prompts.append(prompt)
+        if len(deduped_prompts) == 4:
+            break
+    return deduped_prompts
+
+
+def find_reading_section_for_theme(reading_sections: list[dict], keywords: tuple[str, ...]) -> Optional[dict]:
+    best_section = None
+    best_score = 0
+    for section in reading_sections:
+        if section.get("id") == "week_map":
+            continue
+        text = f"{section.get('title', '')} {section.get('body_markdown', '')}".lower()
+        score = sum(1 for keyword in keywords if keyword in text)
+        if score > best_score:
+            best_score = score
+            best_section = section
+    return best_section if best_score > 0 else None
+
+
+def beginner_topic_from_question(prompt_text: str) -> str:
+    text = prompt_text.strip().rstrip(".?!")
+    lower = text.lower()
+    imperative_prefixes = (
+        ("explain ", ""),
+        ("define ", ""),
+        ("describe ", ""),
+        ("compare ", ""),
+    )
+    for prefix, replacement in imperative_prefixes:
+        if lower.startswith(prefix):
+            return text[len(prefix) :].strip() or "this topic"
+    if lower.startswith("what is the difference between "):
+        return "the difference between " + text[len("What is the difference between ") :].strip()
+    if lower.startswith("what is "):
+        return text[len("What is ") :].strip() or "this topic"
+    if lower.startswith("how would you "):
+        return text[len("How would you ") :].strip() or "this"
+    if lower.startswith("how do you "):
+        return text[len("How do you ") :].strip() or "this"
+    return text or "this topic"
+
+
+def render_topic_chat_starters(prompts: list[str]) -> str:
+    if not prompts:
+        return "<p class='muted'>Starter questions will appear once learning content is loaded.</p>"
     return "".join(
         f"<button type='button' class='assistant-prompt-v3 topic-chat-suggestion' data-topic-chat-suggestion data-topic-chat-prompt='{escape(prompt)}'>{escape(prompt)}</button>"
         for prompt in prompts
@@ -5565,6 +5778,7 @@ def render_learning_panel(
     sections_html = "".join(
         render_reading_section(section, figures) for section in reading_sections
     ) or "<p class='muted'>No reading material generated yet.</p>"
+    orientation_html = render_learning_orientation_panel(orientation_section)
 
     workspace_html = render_learning_workspace(selected_question, questions, attempts, figures, progress) if selected_question else """
       <article class="subpanel question-column">
@@ -5592,8 +5806,9 @@ def render_learning_panel(
       <div class="step-body">
         <div class="step-intro">
           <p><strong>Required coverage:</strong> {progress.get('required_passed', 0)}/{progress.get('required_total', 0)} baseline core questions passed.</p>
-          <p class="muted">This step now behaves like an open-book exam: keep the concept cards and reading material open on the left while you answer questions on the right.</p>
+          <p class="muted">Keep the reading material and concept cards open on the left while you answer questions on the right.</p>
         </div>
+        {orientation_html}
         <section class="learn-workspace">
           <div class="reading-column">
             <div class="reading-column-scroll" data-reading-scroll>
@@ -5626,49 +5841,56 @@ def render_learning_panel(
 
 
 def render_concept_card(card: dict) -> str:
-    figure = ""
-    if card.get("image_path"):
-        figure = (
-            "<figure class='concept-card-figure'>"
-            f"<img src=\"{escape(card['image_path'])}\" alt=\"{escape(card.get('image_alt') or card.get('title') or card.get('concept', ''))}\">"
-            "</figure>"
-        )
-    quick_check = (
-        f"<div class='fine-print'><strong>Quick check:</strong> {escape(card['quick_check_question'])}</div>"
-        if card.get("quick_check_question")
-        else ""
+    detail_items = [
+        f"<div class='fine-print'><strong>Why it matters:</strong> {escape(card['why_it_matters'])}</div>",
+        f"<div class='fine-print'><strong>Common mistake:</strong> {escape(card['common_mistake'])}</div>",
+    ]
+    if card.get("quick_check_question"):
+        detail_items.append(f"<div class='fine-print'><strong>Quick check:</strong> {escape(card['quick_check_question'])}</div>")
+    details_html = (
+        "<details class='concept-card-details'>"
+        "<summary>Details</summary>"
+        f"<div class='concept-card-details-body'>{''.join(detail_items)}</div>"
+        "</details>"
     )
     return (
         "<article class='concept-card' id='card-"
         f"{escape(card.get('id') or card.get('concept', 'concept'))}'>"
-        f"{figure}"
         "<div class='concept-card-body'>"
-        f"<span class='card-chip'>{escape(card.get('title') or card.get('concept', 'Concept'))}</span>"
+        f"<div class='concept-card-title'>{escape(card.get('title') or card.get('concept', 'Concept'))}</div>"
         f"<div>{escape(card['explanation'])}</div>"
-        f"<div class='fine-print'><strong>Why it matters:</strong> {escape(card['why_it_matters'])}</div>"
-        f"<div class='fine-print'><strong>Common mistake:</strong> {escape(card['common_mistake'])}</div>"
-        f"{quick_check}"
+        f"{details_html}"
         "</div>"
         "</article>"
     )
 
 
-def render_reading_section(section: dict, figures: dict[str, dict]) -> str:
-    figures_html = ""
-    for figure_id in section.get("figure_ids", []):
-        figure = figures.get(figure_id)
-        if not figure:
+def split_learning_reading_sections(reading_sections: list[dict]) -> tuple[Optional[dict], list[dict]]:
+    orientation_section = None
+    remaining_sections: list[dict] = []
+    for section in reading_sections or []:
+        if orientation_section is None and section.get("id") == "week_map":
+            orientation_section = section
             continue
-        figures_html += (
-            "<figure class='reading-figure'>"
-            f"<img src=\"{escape(figure['image_path'])}\" alt=\"{escape(figure['alt_text'])}\">"
-            f"<figcaption class='reading-caption'>{escape(figure['caption'])}</figcaption>"
-            "</figure>"
-        )
+        remaining_sections.append(section)
+    return orientation_section, remaining_sections
+
+
+def render_learning_orientation_panel(section: Optional[dict]) -> str:
+    if not section:
+        return ""
+    return (
+        f"<article class='subpanel stage-surface learn-orientation-panel' id='{escape(section.get('id', 'week_map'))}'>"
+        "<div class='learn-orientation-kicker'>How This Week Works</div>"
+        f"{render_markdown_block(section.get('body_markdown', ''))}"
+        "</article>"
+    )
+
+
+def render_reading_section(section: dict, figures: dict[str, dict]) -> str:
     return (
         f"<section class='reading-section' id='{escape(section['id'])}'>"
         f"<h4>{escape(section['title'])}</h4>"
-        f"{figures_html}"
         f"{render_markdown_block(section['body_markdown'])}"
         "</section>"
     )
@@ -5687,10 +5909,6 @@ def render_learning_workspace(
     required_passed = int(progress.get("required_passed", 0))
     required_total = int(progress.get("required_total", 0))
     progress_percent = 0 if required_total == 0 else round((required_passed / required_total) * 100)
-    related_sections = "".join(
-        f"<a href='/?question_id={quote_plus(selected_question['id'])}#{escape(section_id)}'>{escape(humanize_section_label(section_id))}</a>"
-        for section_id in selected_question.get("related_section_ids", [])
-    ) or "<span class='muted'>No linked reading yet.</span>"
     related_cards = "".join(
         f"<a href='/?question_id={quote_plus(selected_question['id'])}#card-{escape(card_id)}'>{escape(humanize_section_label(card_id))}</a>"
         for card_id in selected_question.get("related_concept_ids", [])
@@ -5703,7 +5921,7 @@ def render_learning_workspace(
         <div>
           <h3>Answer Question</h3>
           <p class="fine-print">Question {question_index + 1} of {len(questions)}</p>
-          <p>{escape(selected_question['prompt_text'])}</p>
+          <p class="question-prompt-v3">{escape(selected_question['prompt_text'])}</p>
         </div>
         {render_question_status_badge(selected_question['id'], status)}
       </div>
@@ -5720,9 +5938,6 @@ def render_learning_workspace(
         <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="{required_total}" aria-valuenow="{required_passed}" aria-valuetext="{progress_percent}% complete">
           <div class="progress-fill" style="width: {progress_percent}%;"></div>
         </div>
-      </div>
-      <div class="question-links">
-        {related_sections}
       </div>
       <div class="question-links">
         {related_cards}

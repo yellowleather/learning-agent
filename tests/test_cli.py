@@ -11,10 +11,127 @@ from learning_agent.models import (
     GateResult,
     QuestionScore,
     RawQuestionBankPayload,
+    ReadingMaterialPayload,
 )
 
 
 runner = CliRunner()
+
+
+def _reading_sections_for(questions):
+    question_ids = [question["id"] if isinstance(question, dict) else question.id for question in questions]
+    return ReadingMaterialPayload(
+        week=1,
+        reading_sections=[
+            {
+                "id": "week_map",
+                "title": "How This Week Works",
+                "body_markdown": (
+                    "Week 1 teaches the shape of a basic inference system before implementation begins. "
+                    "The learner should understand what the server is responsible for, how the model runtime participates in generation, "
+                    "and why the deliverables are organized around serving, measurement, and written evidence. "
+                    "That context makes the later coding tasks feel like concrete expressions of the same system instead of a separate activity."
+                ),
+            },
+            {
+                "id": "request_to_response",
+                "title": "From Request To Generated Tokens",
+                "body_markdown": (
+                    "The cleanest way to understand this week is to trace one request all the way through the service. "
+                    "An API request arrives, the server validates and prepares it, the runtime performs model work, and generated output comes back through the service boundary. "
+                    "That path explains both system design and debugging because every claim about behavior eventually maps to some part of this flow."
+                ),
+            },
+            {
+                "id": "generation_mechanics",
+                "title": "Prefill, Decode, And Why The Split Matters",
+                "body_markdown": (
+                    "Prefill and decode are not the same kind of work. "
+                    "During prefill the prompt is consumed and turned into model state, then the runtime enters decode and emits output over time. "
+                    "Once you keep that split in view, latency and throughput questions become much easier to reason about. "
+                    "It also becomes easier to explain why long prompts and long generations can stress the system in different ways."
+                ),
+            },
+            {
+                "id": "build_artifacts",
+                "title": "How Week 1 Maps Onto Code",
+                "body_markdown": (
+                    "The implementation artifacts should feel like direct representations of the ideas in the reading. "
+                    "One file defines the serving boundary, another captures measurement logic, and the results document turns observations into evidence. "
+                    "That mapping helps you explain why each file exists and what system responsibility it carries. "
+                    "Questions about implementation should therefore connect code structure back to runtime behavior and measurement."
+                ),
+            },
+            {
+                "id": "measure_and_verify",
+                "title": "How To Measure And Verify",
+                "body_markdown": (
+                    "You should not treat performance numbers as isolated facts. "
+                    "A useful benchmark makes clear what was timed, how outputs were counted, what prompt shape was used, and why repeated runs deserve trust. "
+                    "Latency and throughput illuminate different properties of the same system, so both need to be tied back to the inference path that produced them. "
+                    "That is what turns a number into technical evidence."
+                ),
+            },
+        ],
+    )
+
+
+def _concept_cards_for(_reading_sections):
+    return ConceptCardPayload(
+        week=1,
+        concept_cards=[
+            {
+                "id": "prefill-vs-decode",
+                "concept": "prefill_vs_decode",
+                "title": "Prefill vs Decode",
+                "explanation": "Prefill processes the prompt and decode emits output token by token.",
+                "why_it_matters": "It explains why prompt length and output length stress the system differently.",
+                "common_mistake": "Treating inference as one undifferentiated block.",
+                "quick_check_question": "What changes once prefill ends and decode begins?",
+                "related_section_ids": ["generation_mechanics"],
+            },
+            {
+                "id": "request-flow",
+                "concept": "request_flow",
+                "title": "Request Flow",
+                "explanation": "Request flow is the path from API request through runtime work to returned output.",
+                "why_it_matters": "It anchors system explanations in the serving path.",
+                "common_mistake": "Skipping the server when explaining inference.",
+                "quick_check_question": "What happens between request arrival and response delivery?",
+                "related_section_ids": ["request_to_response"],
+            },
+            {
+                "id": "implementation-boundaries",
+                "concept": "implementation_boundaries",
+                "title": "Implementation Boundaries",
+                "explanation": "Implementation boundaries connect the reading to the files that express it in code.",
+                "why_it_matters": "This keeps implementation grounded in system responsibilities.",
+                "common_mistake": "Treating files as disconnected tasks.",
+                "quick_check_question": "Which file owns which responsibility?",
+                "related_section_ids": ["build_artifacts"],
+            },
+            {
+                "id": "latency-metrics",
+                "concept": "latency_metrics",
+                "title": "Latency Metrics",
+                "explanation": "Latency metrics describe how long the system takes to respond.",
+                "why_it_matters": "They make performance reasoning concrete.",
+                "common_mistake": "Quoting latency without context.",
+                "quick_check_question": "What part of the path could increase latency?",
+                "related_section_ids": ["measure_and_verify"],
+            },
+            {
+                "id": "benchmark-evidence",
+                "concept": "benchmark_evidence",
+                "title": "Benchmark Evidence",
+                "explanation": "Benchmark evidence turns performance claims into inspectable results.",
+                "why_it_matters": "It connects measurement to trust.",
+                "common_mistake": "Reporting numbers without benchmark context.",
+                "quick_check_question": "What makes a benchmark trustworthy?",
+                "related_section_ids": ["week_map", "measure_and_verify"],
+            },
+        ],
+    )
 
 
 class FakeProvider:
@@ -60,20 +177,6 @@ class FakeProvider:
         return RawQuestionBankPayload(
             week=week_spec.number,
             questions=questions,
-        )
-
-    def generate_concept_cards(self, week_spec, ledger_state, questions):
-        return ConceptCardPayload(
-            week=week_spec.number,
-            concept_cards=[
-                {
-                    "concept": "prefill_vs_decode",
-                    "explanation": "Prefill handles the prompt.",
-                    "why_it_matters": "Latency interpretation depends on the phase.",
-                    "common_mistake": "Ignoring prompt cost.",
-                    "quick_check_question": "Which phase grows with prompt length?",
-                }
-            ],
         )
 
     def classify_question_bank(self, week_spec, ledger_state, questions):
@@ -141,6 +244,12 @@ class FakeProvider:
             for index in range(1, 13)
         )
         return ClassifiedQuestionBankPayload(week=week_spec.number, questions=classified_questions)
+
+    def generate_reading_material(self, week_spec, ledger_state, questions):
+        return _reading_sections_for(questions)
+
+    def generate_concept_cards_from_reading(self, week_spec, ledger_state, reading_sections):
+        return _concept_cards_for(reading_sections)
 
     def generate_gate_question(self, week_spec):
         return GateQuestion(
