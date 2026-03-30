@@ -15,7 +15,6 @@ from learning_agent.models import (
     LearningSession,
     TaskSession,
     VerificationRecord,
-    WeekSpec,
 )
 
 
@@ -54,20 +53,20 @@ class StateStore:
         self.ensure_state_dir()
         self._write_json(self.ledger_path, ledger.model_dump(mode="json"))
 
-    def initialize_ledger(self, metadata, week_spec: WeekSpec) -> Ledger:
+    def initialize_ledger(self, metadata, week: dict) -> Ledger:
         if self.ledger_path.exists():
             raise LearningAgentError(f"Ledger already exists at {self.ledger_path}.")
         ledger = Ledger(
             curriculum_metadata=metadata,
             state={
-                "current_week": week_spec.number,
-                "active_functional_dirs": week_spec.active_dirs,
+                "current_week": int(week["number"]),
+                "active_functional_dirs": list(week["active_dirs"]),
                 "artifacts": {
-                    "required_files": week_spec.required_files,
+                    "required_files": list(week["required_files"]),
                     "completed_files": [],
                 },
                 "metrics": {
-                    "required": week_spec.required_metrics,
+                    "required": list(week["required_metrics"]),
                     "recorded": {},
                 },
             },

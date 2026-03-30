@@ -12,9 +12,20 @@ from learning_agent.models import (
     RawQuestionBankPayload,
     ReadingMaterialPayload,
     TopicChatTurn,
-    WeekSpec,
 )
 from learning_agent.providers.openai_provider import OpenAIProvider
+
+
+def _week_spec() -> dict:
+    return {
+        "number": 1,
+        "title": "Week 1: Build a Baseline Inference Server",
+        "short_title": "Build a Baseline Inference Server",
+        "goal": "Run a model locally and expose it as an API.",
+        "active_dirs": ["simple_server"],
+        "required_files": ["simple_server/server.py"],
+        "required_metrics": ["latency_p95"],
+    }
 
 
 def test_normalize_raw_payload_maps_common_tier_variants():
@@ -95,14 +106,7 @@ def test_answer_topic_chat_uses_week_context_and_history(monkeypatch):
     monkeypatch.setattr(provider, "_client", lambda: fake_client)
 
     reply = provider.answer_topic_chat(
-        week_spec=WeekSpec(
-            number=1,
-            title="Build a Baseline Inference Server",
-            goal="Run a model locally and expose it as an API.",
-            active_dirs=["simple_server"],
-            required_files=["simple_server/server.py"],
-            required_metrics=["latency_p95"],
-        ),
+        week_spec=_week_spec(),
         context="Step: learn\nWeek goal: Run a model locally and expose it as an API.",
         history=[TopicChatTurn(role="user", content="What should I focus on first?")],
         message="How should I measure tokens per second?",
@@ -139,14 +143,7 @@ def test_generate_reading_material_uses_blog_style_contract(monkeypatch):
     monkeypatch.setattr(provider, "_completion_as_model", fake_completion)
 
     payload = provider.generate_reading_material(
-        week_spec=WeekSpec(
-            number=1,
-            title="Build a Baseline Inference Server",
-            goal="Run a model locally and expose it as an API.",
-            active_dirs=["simple_server"],
-            required_files=["simple_server/server.py"],
-            required_metrics=["latency_p95"],
-        ),
+        week_spec=_week_spec(),
         ledger_state=ProgressState(current_week=1, learning_assist_enabled=True),
         questions=[
             LearningQuestion(
@@ -199,14 +196,7 @@ def test_generate_concept_cards_from_reading_uses_reading_material_contract(monk
     monkeypatch.setattr(provider, "_completion_as_model", fake_completion)
 
     payload = provider.generate_concept_cards_from_reading(
-        week_spec=WeekSpec(
-            number=1,
-            title="Build a Baseline Inference Server",
-            goal="Run a model locally and expose it as an API.",
-            active_dirs=["simple_server"],
-            required_files=["simple_server/server.py"],
-            required_metrics=["latency_p95"],
-        ),
+        week_spec=_week_spec(),
         ledger_state=ProgressState(current_week=1, learning_assist_enabled=True),
         reading_sections=[
             {
@@ -245,14 +235,7 @@ def test_stream_topic_chat_uses_streaming_and_yields_deltas(monkeypatch):
 
     chunks = list(
         provider.stream_topic_chat(
-            week_spec=WeekSpec(
-                number=1,
-                title="Build a Baseline Inference Server",
-                goal="Run a model locally and expose it as an API.",
-                active_dirs=["simple_server"],
-                required_files=["simple_server/server.py"],
-                required_metrics=["latency_p95"],
-            ),
+            week_spec=_week_spec(),
             context="Step: learn\nWeek goal: Run a model locally and expose it as an API.",
             history=[TopicChatTurn(role="user", content="What should I focus on first?")],
             message="How should I measure tokens per second?",
@@ -285,14 +268,7 @@ def test_stream_topic_chat_surfaces_connection_errors_clearly(monkeypatch):
     try:
         list(
             provider.stream_topic_chat(
-                week_spec=WeekSpec(
-                    number=1,
-                    title="Build a Baseline Inference Server",
-                    goal="Run a model locally and expose it as an API.",
-                    active_dirs=["simple_server"],
-                    required_files=["simple_server/server.py"],
-                    required_metrics=["latency_p95"],
-                ),
+                week_spec=_week_spec(),
                 context="Step: learn",
                 history=[],
                 message="hello",

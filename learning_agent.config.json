@@ -1,7 +1,7 @@
 {
   "provider": "openai",
   "model": "gpt-4o",
-  "roadmap_path": "ai_inference_engineering/docs/inference_engineering_8_week_plan.md",
+  "roadmap_path": "ai_inference_engineering/docs/8_week_plan.md",
   "target_repo_path": "ai_inference_engineering",
   "state_dir": "state"
 }

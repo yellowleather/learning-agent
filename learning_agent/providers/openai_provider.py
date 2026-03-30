@@ -24,7 +24,6 @@ from learning_agent.models import (
     RawQuestionBankPayload,
     ReadingMaterialPayload,
     TopicChatTurn,
-    WeekSpec,
 )
 from learning_agent.prompts import load_prompt
 from learning_agent.providers.base import LLMProvider
@@ -37,7 +36,10 @@ class OpenAIProvider(LLMProvider):
     def __init__(self, model: str):
         self.model = model.strip()
 
-    def generate_raw_question_bank(self, week_spec: WeekSpec, ledger_state: ProgressState) -> RawQuestionBankPayload:
+    def _week_context_json(self, week_spec: dict[str, Any]) -> str:
+        return json.dumps(week_spec, indent=2, sort_keys=True)
+
+    def generate_raw_question_bank(self, week_spec: dict[str, Any], ledger_state: ProgressState) -> RawQuestionBankPayload:
         system_prompt = load_prompt("mentor.md")
         base_user_prompt = (
             "You are a senior hiring manager at a top AI infrastructure company assessing whether a candidate has "
@@ -62,7 +64,7 @@ class OpenAIProvider(LLMProvider):
             "- Return each question with only three fields: prompt_text, tier, topic_area.\n"
             "- tier must be one of: foundational_concepts, implementation_knowledge, optimization_and_production_insights.\n"
             "- topic_area should be a short technical label such as prefill_vs_decode, latency_metrics, hf_model_loading, benchmarking, or api_serving.\n\n"
-            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n"
+            f"Current week context:\n{self._week_context_json(week_spec)}\n"
             f"Current ledger state:\n{ledger_state.model_dump_json(indent=2)}\n"
             'Required JSON shape: {"week": 1, "questions": [{"prompt_text": "...", "tier": "foundational_concepts", "topic_area": "..."}]}'
         )
@@ -89,7 +91,7 @@ class OpenAIProvider(LLMProvider):
 
     def classify_question_bank(
         self,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         ledger_state: ProgressState,
         questions: list[RawLearningQuestion],
     ) -> ClassifiedQuestionBankPayload:
@@ -107,11 +109,11 @@ class OpenAIProvider(LLMProvider):
             )
             classified_questions.extend(payload.questions)
         classified_questions = self._ensure_unique_question_ids(classified_questions)
-        return ClassifiedQuestionBankPayload(week=week_spec.number, questions=classified_questions)
+        return ClassifiedQuestionBankPayload(week=int(week_spec["number"]), questions=classified_questions)
 
     def generate_reading_material(
         self,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         ledger_state: ProgressState,
         questions: list[LearningQuestion],
     ) -> ReadingMaterialPayload:
@@ -152,7 +154,7 @@ class OpenAIProvider(LLMProvider):
                 else ""
             )
             +
-            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n"
+            f"Current week context:\n{self._week_context_json(week_spec)}\n"
             f"Current ledger state:\n{ledger_state.model_dump_json(indent=2)}\n"
             f"Classified question bank:\n{json.dumps([question.model_dump(mode='json') for question in questions], indent=2)}\n"
             'Required JSON shape: {"week": 1, "reading_sections": [{"id": "week_map", "title": "How This Week Works", '
@@ -162,7 +164,7 @@ class OpenAIProvider(LLMProvider):
 
     def generate_concept_cards_from_reading(
         self,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         ledger_state: ProgressState,
         reading_sections: list,
     ) -> ConceptCardPayload:
@@ -181,7 +183,7 @@ class OpenAIProvider(LLMProvider):
             "- Do not create cards for future-week topics.\n"
             "- Do not mention the words chapter, section, question bank, rubric, or UI in the card body text.\n"
             "- Do not refer to the platform or to what the learner is clicking.\n\n"
-            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n"
+            f"Current week context:\n{self._week_context_json(week_spec)}\n"
             f"Current ledger state:\n{ledger_state.model_dump_json(indent=2)}\n"
             f"Reading material:\n{json.dumps([section.model_dump(mode='json') if hasattr(section, 'model_dump') else section for section in reading_sections], indent=2)}\n"
             'Required JSON shape: {"week": 1, "concept_cards": [{"id": "prefill-vs-decode", "concept": "prefill_vs_decode", '
@@ -190,34 +192,34 @@ class OpenAIProvider(LLMProvider):
         )
         return self._completion_as_model(system_prompt, user_prompt, ConceptCardPayload)
 
-    def generate_gate_question(self, week_spec: WeekSpec) -> GateQuestion:
+    def generate_gate_question(self, week_spec: dict[str, Any]) -> GateQuestion:
         system_prompt = load_prompt("mentor.md")
         user_prompt = (
             "Create one Socratic concept gate question for the current week.\n"
             "Use only the provided current-week context. Output JSON only.\n"
-            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n"
+            f"Current week context:\n{self._week_context_json(week_spec)}\n"
             'Required JSON shape: {"week": 1, "question": "...", "rubric": ["..."], "context_summary": "..."}'
         )
         return self._completion_as_model(system_prompt, user_prompt, GateQuestion)
 
-    def score_gate_answer(self, week_spec: WeekSpec, question: GateQuestion, answer: str) -> GateResult:
+    def score_gate_answer(self, week_spec: dict[str, Any], question: GateQuestion, answer: str) -> GateResult:
         system_prompt = load_prompt("mentor.md")
         user_prompt = (
             "Evaluate whether the answer passes the concept gate.\n"
             "Use only the current-week context and rubric. Output JSON only.\n"
-            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n"
+            f"Current week context:\n{self._week_context_json(week_spec)}\n"
             f"Question:\n{question.model_dump_json(indent=2)}\n"
             f"Answer:\n{answer}\n"
             'Required JSON shape: {"passed": true, "score_rationale": "...", "missing_concepts": ["..."]}'
         )
         return self._completion_as_model(system_prompt, user_prompt, GateResult)
 
-    def generate_task(self, week_spec: WeekSpec, ledger_state: ProgressState) -> GeneratedTask:
+    def generate_task(self, week_spec: dict[str, Any], ledger_state: ProgressState) -> GeneratedTask:
         system_prompt = load_prompt("junior.md")
         user_prompt = (
             "Generate the current-week implementation task for the Junior SWE.\n"
             "Use only the provided current-week context and ledger state. Output JSON only.\n"
-            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n"
+            f"Current week context:\n{self._week_context_json(week_spec)}\n"
             f"Current ledger state:\n{ledger_state.model_dump_json(indent=2)}\n"
             'Required JSON shape: {"week": 1, "title": "...", "objective": "...", "allowed_dirs": ["..."], '
             '"required_files": ["..."], "implementation_steps": ["..."], "acceptance_checks": ["..."], '
@@ -227,7 +229,7 @@ class OpenAIProvider(LLMProvider):
 
     def score_learning_question(
         self,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         question: LearningQuestion,
         answer: str,
         observation: ObservationRecord | None,
@@ -237,7 +239,7 @@ class OpenAIProvider(LLMProvider):
         user_prompt = (
             "Evaluate whether the answer passes the current learning question.\n"
             "Use only the current-week context, the question rubric, and the observation if one is provided. Output JSON only.\n"
-            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n"
+            f"Current week context:\n{self._week_context_json(week_spec)}\n"
             f"Question:\n{question.model_dump_json(indent=2)}\n"
             f"Observation:\n{observation_json}\n"
             f"Answer:\n{answer}\n"
@@ -247,7 +249,7 @@ class OpenAIProvider(LLMProvider):
 
     def generate_evidence_questions(
         self,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         observation: ObservationRecord,
         learning_session: LearningSession,
     ) -> EvidenceQuestionPayload:
@@ -256,7 +258,7 @@ class OpenAIProvider(LLMProvider):
             "Create 2-4 evidence-based follow-up questions grounded in the provided observation.\n"
             "Use only the current-week context and the observed result. Output JSON only.\n"
             "All generated questions must have type='evidence_based', scope='core' or 'adjacent', and observation_required=true.\n"
-            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n"
+            f"Current week context:\n{self._week_context_json(week_spec)}\n"
             f"Observation:\n{observation.model_dump_json(indent=2)}\n"
             f"Existing learning session:\n{learning_session.model_dump_json(indent=2)}\n"
             'Required JSON shape: {"week": 1, "questions": [{"id": "evidence_prefill_1", "type": "evidence_based", '
@@ -267,7 +269,7 @@ class OpenAIProvider(LLMProvider):
 
     def answer_topic_chat(
         self,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         context: str,
         history: list[TopicChatTurn],
         message: str,
@@ -285,7 +287,7 @@ class OpenAIProvider(LLMProvider):
 
     def stream_topic_chat(
         self,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         context: str,
         history: list[TopicChatTurn],
         message: str,
@@ -313,7 +315,7 @@ class OpenAIProvider(LLMProvider):
 
     def _topic_chat_messages(
         self,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         context: str,
         history: list[TopicChatTurn],
         message: str,
@@ -330,7 +332,7 @@ class OpenAIProvider(LLMProvider):
             "Be concise but technically useful.\n"
             "Do not invent repository state that is not present in the context.\n"
             "Avoid drifting into future-week material unless the user explicitly asks for a comparison.\n\n"
-            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n\n"
+            f"Current week context:\n{self._week_context_json(week_spec)}\n\n"
             f"Current app context:\n{context}\n\n"
             f"Recent chat history:\n{history_text}\n\n"
             f"User question:\n{message}\n"
@@ -363,7 +365,7 @@ class OpenAIProvider(LLMProvider):
     def _classify_question_batch(
         self,
         system_prompt: str,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         ledger_state: ProgressState,
         batch: list[RawLearningQuestion],
         batch_index: int,
@@ -384,7 +386,7 @@ class OpenAIProvider(LLMProvider):
             "- Use ids that include the batch number so they remain globally unique.\n"
             "- Each scoring rubric must be concrete enough to score a free-text answer.\n"
             "- Stay strictly within the current week.\n\n"
-            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n"
+            f"Current week context:\n{self._week_context_json(week_spec)}\n"
             f"Current ledger state:\n{ledger_state.model_dump_json(indent=2)}\n"
             f"Raw question batch:\n{json.dumps([question.model_dump(mode='json') for question in batch], indent=2)}\n"
             'Required JSON shape: {"week": 1, "questions": [{"id": "b1_tier1_latency_01", "type": "concept", '
@@ -568,7 +570,7 @@ class OpenAIProvider(LLMProvider):
 
     def _build_raw_question_gap_prompt(
         self,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         ledger_state: ProgressState,
         existing_payload: RawQuestionBankPayload,
         errors: list[str],
@@ -583,7 +585,7 @@ class OpenAIProvider(LLMProvider):
             "Generate only additional raw questions that fill the gaps. Output JSON only.\n"
             "Do not repeat or paraphrase any existing question.\n"
             "Stay strictly within the current week.\n"
-            f"Current week context:\n{week_spec.model_dump_json(indent=2)}\n"
+            f"Current week context:\n{self._week_context_json(week_spec)}\n"
             f"Current ledger state:\n{ledger_state.model_dump_json(indent=2)}\n"
             f"Existing raw question bank:\n{existing_payload.model_dump_json(indent=2)}\n"
             "Validation failures:\n"

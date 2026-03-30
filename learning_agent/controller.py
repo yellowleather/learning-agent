@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any, Dict
 
 from learning_agent.config import resolve_repo_path
-from learning_agent.curriculum import get_week_spec, load_curriculum
 from learning_agent.errors import LearningAgentError
 from learning_agent.models import (
     AppConfig,
@@ -15,6 +14,7 @@ from learning_agent.models import (
     CheckpointState,
     ConceptCardPayload,
     ConceptCard,
+    CurriculumMetadata,
     EvidenceQuestionPayload,
     FigureAsset,
     GateSession,
@@ -32,9 +32,9 @@ from learning_agent.models import (
     TaskSession,
     TopicChatTurn,
     VerificationRecord,
-    WeekSpec,
 )
 from learning_agent.providers.factory import get_provider
+from learning_agent.roadmap_parser import load_roadmap_dict
 from learning_agent.state import StateStore
 
 
@@ -47,13 +47,14 @@ class LearningController:
         self.target_repo_path = resolve_repo_path(repo_root, config.target_repo_path)
 
     def initialize(self) -> Ledger:
-        metadata, weeks = load_curriculum(self.roadmap_path, self.config.target_repo_path)
-        week_one = get_week_spec(weeks, 1)
+        roadmap = self._load_roadmap()
+        metadata = self._curriculum_metadata(roadmap)
+        week_one = self._week_by_number(roadmap, 1)
         return self.state.initialize_ledger(metadata, week_one)
 
     def status(self) -> Dict[str, Any]:
         ledger = self.state.load_ledger()
-        week_spec = self._load_current_week_spec(ledger)
+        week_spec = self._load_current_week(ledger)
         blockers = self._approval_blockers(ledger)
         gate_exists = self.state.gate_path.exists()
         task_exists = self.state.task_path.exists()
@@ -63,10 +64,10 @@ class LearningController:
         learning_session = self.get_learning_session()
         checkpoints = self._build_checkpoints(ledger, learning_session)
         return {
-            "week": week_spec.number,
+            "week": int(week_spec["number"]),
             "total_weeks": ledger.curriculum_metadata.total_weeks,
-            "title": week_spec.title,
-            "goal": week_spec.goal,
+            "title": str(week_spec["short_title"]),
+            "goal": str(week_spec["goal"]),
             "active_dirs": ledger.state.active_functional_dirs,
             "learning_assist_enabled": ledger.state.learning_assist_enabled,
             "required_files": ledger.state.artifacts.required_files,
@@ -93,7 +94,7 @@ class LearningController:
 
     def ask_gate(self):
         ledger = self.state.load_ledger()
-        week_spec = self._load_current_week_spec(ledger)
+        week_spec = self._load_current_week(ledger)
         provider = self._provider()
         question = provider.generate_gate_question(week_spec)
         session = GateSession(prompt=question)
@@ -102,7 +103,7 @@ class LearningController:
 
     def submit_gate(self, answer: str):
         ledger = self.state.load_ledger()
-        week_spec = self._load_current_week_spec(ledger)
+        week_spec = self._load_current_week(ledger)
         gate_session = self.state.load_gate()
         provider = self._provider()
         result = provider.score_gate_answer(week_spec, gate_session.prompt, answer)
@@ -121,7 +122,7 @@ class LearningController:
 
     def generate_learning_assist(self) -> LearningSession:
         ledger = self.state.load_ledger()
-        week_spec = self._load_current_week_spec(ledger)
+        week_spec = self._load_current_week(ledger)
         provider = self._provider()
         raw_payload = provider.generate_raw_question_bank(week_spec, ledger.state)
         if not isinstance(raw_payload, RawQuestionBankPayload):
@@ -142,7 +143,7 @@ class LearningController:
         if not isinstance(reading_payload, ReadingMaterialPayload):
             reading_payload = ReadingMaterialPayload.model_validate(reading_payload)
         reading_sections = self._normalize_reading_sections(classified_payload.questions, reading_payload.reading_sections)
-        reading_errors = self._validate_reading_sections(week_spec, classified_payload.questions, reading_sections)
+        reading_errors = self._validate_reading_sections(classified_payload.questions, reading_sections)
         if reading_errors:
             raise LearningAgentError("Learning Assist reading generation failed validation: " + "; ".join(reading_errors))
         concept_payload = provider.generate_concept_cards_from_reading(week_spec, ledger.state, reading_sections)
@@ -157,7 +158,7 @@ class LearningController:
         concept_cards = self._decorate_concept_cards(concept_cards)
         questions = self._link_questions_to_content(classified_payload.questions, concept_cards, reading_sections)
         session = LearningSession(
-            week=week_spec.number,
+            week=int(week_spec["number"]),
             concept_cards=concept_cards,
             figures=figures,
             reading_sections=reading_sections,
@@ -174,7 +175,7 @@ class LearningController:
         question = self._question_by_id(session, question_id)
         if question.observation_required and not self._observation_ready_for_questions(ledger):
             raise LearningAgentError("This question requires a valid observation before it can be answered.")
-        week_spec = self._load_current_week_spec(ledger)
+        week_spec = self._load_current_week(ledger)
         provider = self._provider()
         result = provider.score_learning_question(week_spec, question, answer, ledger.state.observation)
         session.attempts.append(QuestionAttempt(question_id=question_id, answer=answer, result=result))
@@ -187,7 +188,7 @@ class LearningController:
         ledger = self.state.load_ledger()
         if not ledger.state.gates.socratic_check_passed:
             raise LearningAgentError("Cannot generate a task before the concept gate passes.")
-        week_spec = self._load_current_week_spec(ledger)
+        week_spec = self._load_current_week(ledger)
         provider = self._provider()
         task = provider.generate_task(week_spec, ledger.state)
         session = TaskSession(task=task)
@@ -223,7 +224,7 @@ class LearningController:
         if self.state.learning_path.exists() and observation.reliability == "valid":
             session = self.state.load_learning()
             if not any(question.type == "evidence_based" for question in session.questions):
-                week_spec = self._load_current_week_spec(ledger)
+                week_spec = self._load_current_week(ledger)
                 provider = self._provider()
                 payload = provider.generate_evidence_questions(week_spec, observation, session)
                 if not isinstance(payload, EvidenceQuestionPayload):
@@ -268,20 +269,21 @@ class LearningController:
         ledger = self.state.load_ledger()
         if not ledger.state.gates.week_approved:
             raise LearningAgentError("Approve the current week before advancing.")
-        metadata, weeks = load_curriculum(self.roadmap_path, self.config.target_repo_path)
-        next_week = get_week_spec(weeks, ledger.state.current_week + 1)
+        roadmap = self._load_roadmap()
+        metadata = self._curriculum_metadata(roadmap)
+        next_week = self._week_by_number(roadmap, ledger.state.current_week + 1)
         ledger = Ledger(
             curriculum_metadata=metadata,
             state={
-                "current_week": next_week.number,
-                "active_functional_dirs": next_week.active_dirs,
+                "current_week": int(next_week["number"]),
+                "active_functional_dirs": list(next_week["active_dirs"]),
                 "learning_assist_enabled": ledger.state.learning_assist_enabled,
                 "artifacts": {
-                    "required_files": next_week.required_files,
+                    "required_files": list(next_week["required_files"]),
                     "completed_files": [],
                 },
                 "metrics": {
-                    "required": next_week.required_metrics,
+                    "required": list(next_week["required_metrics"]),
                     "recorded": {},
                 },
             },
@@ -371,7 +373,7 @@ class LearningController:
             raise LearningAgentError("Topic chat message cannot be empty.")
 
         ledger = self.state.load_ledger()
-        week_spec = self._load_current_week_spec(ledger)
+        week_spec = self._load_current_week(ledger)
         session = self.get_learning_session()
         step_id = current_step.strip().lower() or self._default_step_for_topic_chat(ledger, session)
         valid_steps = {"learn", "build", "verify", "approve"}
@@ -388,7 +390,7 @@ class LearningController:
         )
         yield {
             "type": "start",
-            "week": week_spec.number,
+            "week": int(week_spec["number"]),
             "context_label": context_label,
         }
 
@@ -411,13 +413,29 @@ class LearningController:
         yield {
             "type": "done",
             "reply": reply,
-            "week": week_spec.number,
+            "week": int(week_spec["number"]),
             "context_label": context_label,
         }
 
-    def _load_current_week_spec(self, ledger: Ledger) -> WeekSpec:
-        _, weeks = load_curriculum(self.roadmap_path, self.config.target_repo_path)
-        return get_week_spec(weeks, ledger.state.current_week)
+    def _load_roadmap(self) -> dict[str, Any]:
+        return load_roadmap_dict(self.roadmap_path)
+
+    def _curriculum_metadata(self, roadmap: dict[str, Any]) -> CurriculumMetadata:
+        return CurriculumMetadata(
+            title=str(roadmap["title"]),
+            total_weeks=len(roadmap["weeks"]),
+            target_repo=self.config.target_repo_path,
+        )
+
+    def _week_by_number(self, roadmap: dict[str, Any], week_number: int) -> dict[str, Any]:
+        for week in roadmap["weeks"]:
+            if int(week["number"]) == week_number:
+                return week
+        raise LearningAgentError(f"Week {week_number} does not exist in the roadmap.")
+
+    def _load_current_week(self, ledger: Ledger) -> dict[str, Any]:
+        roadmap = self._load_roadmap()
+        return self._week_by_number(roadmap, ledger.state.current_week)
 
     def _provider(self):
         return get_provider(self.config)
@@ -490,7 +508,7 @@ class LearningController:
 
     def _build_figure_assets(
         self,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         concept_cards: list,
         questions: list[LearningQuestion],
     ) -> list[FigureAsset]:
@@ -501,7 +519,7 @@ class LearningController:
                 self._append_if_missing(figure_keys, key)
 
         combined_text = " ".join(question.prompt_text for question in questions).lower()
-        if "server.py" in " ".join(week_spec.required_files) or "api" in combined_text:
+        if "server.py" in " ".join(week_spec["required_files"]) or "api" in combined_text:
             self._append_if_missing(figure_keys, "server_architecture")
         if any(keyword in combined_text for keyword in ("benchmark", "latency", "throughput", "tokens per second", "tps")):
             self._append_if_missing(figure_keys, "benchmark_flow")
@@ -565,6 +583,7 @@ class LearningController:
         concept_cards: list[ConceptCard],
     ) -> list[ConceptCard]:
         known_section_ids = {section.id for section in reading_sections}
+        ordered_section_ids = [section.id for section in reading_sections]
         normalized_cards: list[ConceptCard] = []
         used_ids: set[str] = set()
         for index, card in enumerate(concept_cards, start=1):
@@ -592,6 +611,18 @@ class LearningController:
                     }
                 )
             )
+        if normalized_cards:
+            covered_section_ids = {
+                section_id
+                for card in normalized_cards
+                for section_id in card.related_section_ids
+                if section_id in known_section_ids
+            }
+            missing_section_ids = [section_id for section_id in ordered_section_ids if section_id not in covered_section_ids]
+            if missing_section_ids:
+                first_card = normalized_cards[0]
+                related_section_ids = list(dict.fromkeys(first_card.related_section_ids + missing_section_ids))
+                normalized_cards[0] = first_card.model_copy(update={"related_section_ids": related_section_ids})
         return normalized_cards
 
     def _link_reading_sections_to_concepts(
@@ -704,7 +735,7 @@ class LearningController:
     def _build_topic_chat_context(
         self,
         ledger: Ledger,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         learning_session: LearningSession | None,
         current_step: str,
         selected_question_id: str | None,
@@ -713,11 +744,11 @@ class LearningController:
         progress = self._question_progress(learning_session)
         lines = [
             f"Step: {current_step}",
-            f"Week title: {week_spec.title}",
-            f"Week goal: {week_spec.goal}",
-            "Active directories: " + (", ".join(week_spec.active_dirs) or "(none)"),
-            "Required files: " + (", ".join(week_spec.required_files) or "(none)"),
-            "Required metrics: " + (", ".join(week_spec.required_metrics) or "(none)"),
+            f"Week title: {week_spec['short_title']}",
+            f"Week goal: {week_spec['goal']}",
+            "Active directories: " + (", ".join(week_spec["active_dirs"]) or "(none)"),
+            "Required files: " + (", ".join(week_spec["required_files"]) or "(none)"),
+            "Required metrics: " + (", ".join(week_spec["required_metrics"]) or "(none)"),
             "Completed files: " + (", ".join(ledger.state.artifacts.completed_files) or "(none)"),
             "Recorded metrics: "
             + (json.dumps(ledger.state.metrics.recorded, sort_keys=True) if ledger.state.metrics.recorded else "(none)"),
@@ -729,7 +760,7 @@ class LearningController:
             ),
         ]
 
-        context_label = f"Week {week_spec.number} · {self._humanize_label(current_step)}"
+        context_label = f"Week {week_spec['number']} · {self._humanize_label(current_step)}"
         if selected_question_id and current_step == "learn":
             lines.append(
                 "Selected question context is available in the UI but is intentionally not injected into chat grounding by default."
@@ -887,7 +918,6 @@ class LearningController:
 
     def _validate_reading_sections(
         self,
-        week_spec: WeekSpec,
         questions: list[LearningQuestion],
         reading_sections: list[ReadingSection],
     ) -> list[str]:

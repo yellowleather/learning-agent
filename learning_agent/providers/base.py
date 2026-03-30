@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
+from typing import Any
 
 from learning_agent.models import (
     ClassifiedQuestionBankPayload,
@@ -19,19 +20,18 @@ from learning_agent.models import (
     RawLearningQuestion,
     ReadingMaterialPayload,
     TopicChatTurn,
-    WeekSpec,
 )
 
 
 class LLMProvider(ABC):
     @abstractmethod
-    def generate_raw_question_bank(self, week_spec: WeekSpec, ledger_state: ProgressState) -> RawQuestionBankPayload:
+    def generate_raw_question_bank(self, week_spec: dict[str, Any], ledger_state: ProgressState) -> RawQuestionBankPayload:
         raise NotImplementedError
 
     @abstractmethod
     def classify_question_bank(
         self,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         ledger_state: ProgressState,
         questions: list[RawLearningQuestion],
     ) -> ClassifiedQuestionBankPayload:
@@ -40,7 +40,7 @@ class LLMProvider(ABC):
     @abstractmethod
     def generate_reading_material(
         self,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         ledger_state: ProgressState,
         questions: list[LearningQuestion],
     ) -> ReadingMaterialPayload:
@@ -49,28 +49,28 @@ class LLMProvider(ABC):
     @abstractmethod
     def generate_concept_cards_from_reading(
         self,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         ledger_state: ProgressState,
         reading_sections: list,
     ) -> ConceptCardPayload:
         raise NotImplementedError
 
     @abstractmethod
-    def generate_gate_question(self, week_spec: WeekSpec) -> GateQuestion:
+    def generate_gate_question(self, week_spec: dict[str, Any]) -> GateQuestion:
         raise NotImplementedError
 
     @abstractmethod
-    def score_gate_answer(self, week_spec: WeekSpec, question: GateQuestion, answer: str) -> GateResult:
+    def score_gate_answer(self, week_spec: dict[str, Any], question: GateQuestion, answer: str) -> GateResult:
         raise NotImplementedError
 
     @abstractmethod
-    def generate_task(self, week_spec: WeekSpec, ledger_state: ProgressState) -> GeneratedTask:
+    def generate_task(self, week_spec: dict[str, Any], ledger_state: ProgressState) -> GeneratedTask:
         raise NotImplementedError
 
     @abstractmethod
     def score_learning_question(
         self,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         question: LearningQuestion,
         answer: str,
         observation: ObservationRecord | None,
@@ -80,7 +80,7 @@ class LLMProvider(ABC):
     @abstractmethod
     def generate_evidence_questions(
         self,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         observation: ObservationRecord,
         learning_session: LearningSession,
     ) -> EvidenceQuestionPayload:
@@ -89,7 +89,7 @@ class LLMProvider(ABC):
     @abstractmethod
     def answer_topic_chat(
         self,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         context: str,
         history: list[TopicChatTurn],
         message: str,
@@ -98,7 +98,7 @@ class LLMProvider(ABC):
 
     def stream_topic_chat(
         self,
-        week_spec: WeekSpec,
+        week_spec: dict[str, Any],
         context: str,
         history: list[TopicChatTurn],
         message: str,

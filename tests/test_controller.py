@@ -18,6 +18,52 @@ from learning_agent.models import (
 )
 
 
+def _extra_weeks(start: int = 3) -> str:
+    blocks = []
+    for week_number in range(start, 9):
+        blocks.append(
+            f"""## Week {week_number}: Extra Week {week_number}
+
+### Goal
+
+Goal for week {week_number}.
+
+### Narrative
+
+Narrative for week {week_number}.
+
+### Topics Covered
+
+- concept {week_number}
+
+### By the End of This Week You Will Be Able To
+
+- Explain concept {week_number}
+- Build artifact {week_number}
+
+### Assessment Targets
+
+1. Explain concept {week_number}.
+2. Describe artifact {week_number}.
+
+### Implementation
+
+**Files created this week:**
+
+- `docs/week_{week_number}.md` — Artifact for week {week_number}.
+
+**Deliverables:** A written artifact in `docs/week_{week_number}.md`.
+
+**Cloud deployment:** Not required.
+
+### Key Resources
+
+- Example resource.
+"""
+        )
+    return "\n\n".join(blocks)
+
+
 def _reading_sections_for(questions):
     question_ids = [question["id"] if isinstance(question, dict) else question.id for question in questions]
     return ReadingMaterialPayload(
@@ -206,7 +252,7 @@ class FakeProvider:
             for index in range(1, 13)
         )
         return RawQuestionBankPayload(
-            week=week_spec.number,
+            week=week_spec["number"],
             questions=questions,
         )
 
@@ -219,7 +265,7 @@ class FakeProvider:
                 "depth": "baseline",
                 "prompt_text": "What is the difference between prefill and decode?",
                 "scoring_rubric": ["Explain prompt processing.", "Explain iterative generation."],
-                "roadmap_anchor": {"week": week_spec.number, "concept": "prefill_vs_decode"},
+                "roadmap_anchor": {"week": week_spec["number"], "concept": "prefill_vs_decode"},
                 "observation_required": False,
             }
         ]
@@ -231,7 +277,7 @@ class FakeProvider:
                 "depth": "deep",
                 "prompt_text": f"Concept deep question {index}",
                 "scoring_rubric": ["Explain the concept clearly."],
-                "roadmap_anchor": {"week": week_spec.number, "topic": "latency_metrics"},
+                "roadmap_anchor": {"week": week_spec["number"], "topic": "latency_metrics"},
                 "observation_required": False,
             }
             for index in range(2, 19)
@@ -244,7 +290,7 @@ class FakeProvider:
                 "depth": "baseline",
                 "prompt_text": "How would you measure tokens per second?",
                 "scoring_rubric": ["Count generated tokens.", "Divide by decode time."],
-                "roadmap_anchor": {"week": week_spec.number, "deliverable": "simple_server/benchmark.py"},
+                "roadmap_anchor": {"week": week_spec["number"], "deliverable": "simple_server/benchmark.py"},
                 "observation_required": False,
             }
         )
@@ -256,7 +302,7 @@ class FakeProvider:
                 "depth": "deep",
                 "prompt_text": f"Implementation deep question {index}",
                 "scoring_rubric": ["Describe the implementation tradeoff."],
-                "roadmap_anchor": {"week": week_spec.number, "deliverable": "simple_server/server.py"},
+                "roadmap_anchor": {"week": week_spec["number"], "deliverable": "simple_server/server.py"},
                 "observation_required": False,
             }
             for index in range(2, 21)
@@ -269,13 +315,13 @@ class FakeProvider:
                 "depth": "deep",
                 "prompt_text": f"Optimization question {index}",
                 "scoring_rubric": ["Discuss the tradeoff."],
-                "roadmap_anchor": {"week": week_spec.number, "topic": "throughput_tradeoffs"},
+                "roadmap_anchor": {"week": week_spec["number"], "topic": "throughput_tradeoffs"},
                 "observation_required": False,
             }
             for index in range(1, 13)
         )
         return ClassifiedQuestionBankPayload(
-            week=week_spec.number,
+            week=week_spec["number"],
             questions=classified_questions,
         )
 
@@ -287,10 +333,10 @@ class FakeProvider:
 
     def generate_gate_question(self, week_spec):
         return GateQuestion(
-            week=week_spec.number,
+            week=week_spec["number"],
             question="Explain prefill vs decode.",
             rubric=["Explain the distinction.", "Mention why decode repeats."],
-            context_summary=week_spec.goal,
+            context_summary=week_spec["goal"],
         )
 
     def score_gate_answer(self, week_spec, question, answer):
@@ -302,11 +348,11 @@ class FakeProvider:
 
     def generate_task(self, week_spec, ledger_state):
         return GeneratedTask(
-            week=week_spec.number,
-            title=week_spec.title,
-            objective=week_spec.goal,
-            allowed_dirs=week_spec.active_dirs,
-            required_files=week_spec.required_files,
+            week=week_spec["number"],
+            title=week_spec["short_title"],
+            objective=week_spec["goal"],
+            allowed_dirs=week_spec["active_dirs"],
+            required_files=week_spec["required_files"],
             implementation_steps=["Create the required files."],
             acceptance_checks=["Files exist."],
             verification_expectations=["Verification is recorded."],
@@ -322,7 +368,7 @@ class FakeProvider:
 
     def generate_evidence_questions(self, week_spec, observation, learning_session):
         return EvidenceQuestionPayload(
-            week=week_spec.number,
+            week=week_spec["number"],
             questions=[
                 {
                     "id": "evidence_latency",
@@ -331,7 +377,7 @@ class FakeProvider:
                     "depth": "baseline",
                     "prompt_text": "What does the latency pattern suggest?",
                     "scoring_rubric": ["Tie the result to prefill cost."],
-                    "roadmap_anchor": {"week": week_spec.number, "metric": "latency_p95"},
+                    "roadmap_anchor": {"week": week_spec["number"], "metric": "latency_p95"},
                     "observation_required": True,
                 }
             ],
@@ -404,50 +450,114 @@ def write_roadmap(tmp_path: Path) -> Path:
     roadmap = tmp_path / "docs" / "plan.md"
     roadmap.parent.mkdir(parents=True, exist_ok=True)
     roadmap.write_text(
-        """# 8-Week Inference Engineering Roadmap
+        f"""# 8-Week Inference Engineering Roadmap
 
-# Week 1 --- Build a Baseline Inference Server
+## Overview
 
-## Goal
+Overview text.
+
+## Repository Structure
+
+```
+inference/
+├── simple_server/
+├── docs/
+└── benchmarking/
+```
+
+Repository description.
+
+## Week 1: Build a Baseline Inference Server
+
+### Goal
 
 Run a model locally and expose it as an API.
 
-## Learn
+### Narrative
 
-Concepts:
+This week establishes the baseline serving path and the first performance measurements.
+
+### Topics Covered
 
 - prefill vs decode
 - latency vs throughput
 
-## Tasks
+### By the End of This Week You Will Be Able To
 
-- Load a small LLM
-- expose API
+- Explain the serving path and the key metrics
+- Build the baseline service and benchmark it
 
-## Deliverables
+### Assessment Targets
 
-    simple_server/
-        server.py
-        benchmark.py
+1. Explain prefill vs decode.
+2. Describe how you would benchmark the baseline server.
 
-Document:
+### Implementation
 
-    docs/baseline_results.md
+**Files created this week:**
 
-# Week 2 --- Next Week
+- `simple_server/server.py` — API server entrypoint.
+- `simple_server/benchmark.py` — Benchmark runner.
 
-## Goal
+**Deliverables:** A baseline report in `docs/baseline_results.md` capturing latency and tokens/sec.
+
+**Cloud deployment:** Not required.
+
+### Key Resources
+
+- Example resource.
+
+## Week 2: Next Week
+
+### Goal
 
 Do more things.
 
-## Tasks
+### Narrative
 
-- Ship a next file
+This week extends the baseline with one additional implementation step.
 
-## Deliverables
+### Topics Covered
 
-    benchmarking/
-        run.py
+- next-step system design
+
+### By the End of This Week You Will Be Able To
+
+- Explain the next implementation step
+- Extend the system with a new artifact
+
+### Assessment Targets
+
+1. Explain the purpose of the next implementation step.
+2. Describe the new artifact.
+
+### Implementation
+
+**Files created this week:**
+
+- `benchmarking/run.py` — Next benchmark script.
+
+**Deliverables:** A runnable benchmark script in `benchmarking/run.py`.
+
+**Cloud deployment:** Not required.
+
+### Key Resources
+
+- Example resource.
+
+{_extra_weeks()}
+
+## Capstone Summary
+
+### Artifacts Built
+
+| Artifact | Location | Description |
+|---|---|---|
+| Baseline server | `simple_server/server.py` | Example |
+
+### What You Can Now Do
+
+You can ship the system.
 """
     )
     return roadmap
@@ -496,6 +606,30 @@ def test_full_week_one_transition(monkeypatch, tmp_path):
     controller.record_metric("tokens_per_sec", 25.0)
     ledger = controller.record_verification(True, "Local verification passed.")
     assert ledger.state.gates.verification_passed is True
+
+    ledger = controller.record_observation(
+        ObservationRecord(
+            command=".venv/bin/python simple_server/benchmark.py",
+            artifact_path="docs/baseline_results.md",
+            prompt_tokens=512,
+            output_tokens=128,
+            latency_p95_ms=10.0,
+            tokens_per_sec=25.0,
+            reliability="valid",
+            notes="Baseline benchmark completed successfully.",
+        )
+    )
+    assert ledger.state.gates.evidence_reliable is True
+
+    ledger = controller.record_reflection(
+        ReflectionRecord(
+            text="The measurement is trustworthy and matches the intended baseline.",
+            trustworthy=True,
+            buggy=False,
+            next_fix="",
+        )
+    )
+    assert ledger.state.reflection is not None
 
     ledger = controller.approve_week()
     assert ledger.state.gates.week_approved is True

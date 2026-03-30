@@ -4,6 +4,52 @@ from learning_agent.errors import LearningAgentError
 from learning_agent.ui import render_page, run_action, run_topic_chat, run_topic_chat_stream
 
 
+def _extra_weeks(start: int = 2) -> str:
+    blocks = []
+    for week_number in range(start, 9):
+        blocks.append(
+            f"""## Week {week_number}: Extra Week {week_number}
+
+### Goal
+
+Goal for week {week_number}.
+
+### Narrative
+
+Narrative for week {week_number}.
+
+### Topics Covered
+
+- concept {week_number}
+
+### By the End of This Week You Will Be Able To
+
+- Explain concept {week_number}
+- Build artifact {week_number}
+
+### Assessment Targets
+
+1. Explain concept {week_number}.
+2. Describe artifact {week_number}.
+
+### Implementation
+
+**Files created this week:**
+
+- `docs/week_{week_number}.md` — Artifact for week {week_number}.
+
+**Deliverables:** A written artifact in `docs/week_{week_number}.md`.
+
+**Cloud deployment:** Not required.
+
+### Key Resources
+
+- Example resource.
+"""
+        )
+    return "\n\n".join(blocks)
+
+
 def _reading_sections_for(questions):
     question_ids = [question["id"] if isinstance(question, dict) else question.id for question in questions]
     return {
@@ -189,7 +235,7 @@ class FakeProvider:
             for index in range(1, 13)
         )
         return {
-            "week": week_spec.number,
+            "week": week_spec["number"],
             "questions": questions,
         }
 
@@ -202,7 +248,7 @@ class FakeProvider:
                 "depth": "baseline",
                 "prompt_text": "Explain prefill vs decode.",
                 "scoring_rubric": ["Mention prompt processing.", "Mention iterative decoding."],
-                "roadmap_anchor": {"week": week_spec.number},
+                "roadmap_anchor": {"week": week_spec["number"]},
                 "observation_required": False,
             }
         ]
@@ -214,7 +260,7 @@ class FakeProvider:
                 "depth": "deep",
                 "prompt_text": f"Concept deep question {index}",
                 "scoring_rubric": ["Explain the concept clearly."],
-                "roadmap_anchor": {"week": week_spec.number},
+                "roadmap_anchor": {"week": week_spec["number"]},
                 "observation_required": False,
             }
             for index in range(2, 19)
@@ -227,7 +273,7 @@ class FakeProvider:
                 "depth": "baseline",
                 "prompt_text": "How would you measure tokens per second?",
                 "scoring_rubric": ["Count generated tokens.", "Divide by decode time."],
-                "roadmap_anchor": {"week": week_spec.number},
+                "roadmap_anchor": {"week": week_spec["number"]},
                 "observation_required": False,
             }
         )
@@ -239,7 +285,7 @@ class FakeProvider:
                 "depth": "deep",
                 "prompt_text": f"Implementation deep question {index}",
                 "scoring_rubric": ["Describe the implementation tradeoff."],
-                "roadmap_anchor": {"week": week_spec.number},
+                "roadmap_anchor": {"week": week_spec["number"]},
                 "observation_required": False,
             }
             for index in range(2, 21)
@@ -252,12 +298,12 @@ class FakeProvider:
                 "depth": "deep",
                 "prompt_text": f"Optimization question {index}",
                 "scoring_rubric": ["Discuss the tradeoff."],
-                "roadmap_anchor": {"week": week_spec.number},
+                "roadmap_anchor": {"week": week_spec["number"]},
                 "observation_required": False,
             }
             for index in range(1, 13)
         )
-        return {"week": week_spec.number, "questions": classified_questions}
+        return {"week": week_spec["number"], "questions": classified_questions}
 
     def generate_reading_material(self, week_spec, ledger_state, questions):
         return _reading_sections_for(questions)
@@ -278,7 +324,7 @@ class FakeProvider:
         return {"passed": True, "score_rationale": "Good answer.", "missing_concepts": []}
 
     def generate_evidence_questions(self, week_spec, observation, learning_session):
-        return {"week": week_spec.number, "questions": []}
+        return {"week": week_spec["number"], "questions": []}
 
     def answer_topic_chat(self, week_spec, context, history, message):
         return f"Tutor reply about: {message}"
@@ -315,33 +361,73 @@ def write_roadmap(tmp_path):
     roadmap = tmp_path / "docs" / "plan.md"
     roadmap.parent.mkdir(parents=True, exist_ok=True)
     roadmap.write_text(
-        """# 8-Week Inference Engineering Roadmap
+        f"""# 8-Week Inference Engineering Roadmap
 
-# Week 1 --- Build a Baseline Inference Server
+## Overview
 
-## Goal
+Overview text.
+
+## Repository Structure
+
+```
+inference/
+├── simple_server/
+└── docs/
+```
+
+Repository description.
+
+## Week 1: Build a Baseline Inference Server
+
+### Goal
 
 Run a model locally and expose it as an API.
 
-## Learn
+### Narrative
 
-Concepts:
+This week establishes the baseline serving path and the first performance measurements.
+
+### Topics Covered
 
 - prefill vs decode
 
-## Tasks
+### By the End of This Week You Will Be Able To
 
-- Load a small LLM
-- measure tokens/sec
+- Explain how the baseline server works
+- Measure the initial performance characteristics
 
-## Deliverables
+### Assessment Targets
 
-    simple_server/
-        server.py
+1. Explain prefill vs decode.
+2. Describe how to measure the baseline server.
 
-Document:
+### Implementation
 
-    docs/baseline_results.md
+**Files created this week:**
+
+- `simple_server/server.py` — API server entrypoint.
+
+**Deliverables:** A benchmark note in `docs/baseline_results.md` measuring tokens/sec for the server.
+
+**Cloud deployment:** Not required.
+
+### Key Resources
+
+- Example resource.
+
+{_extra_weeks()}
+
+## Capstone Summary
+
+### Artifacts Built
+
+| Artifact | Location | Description |
+|---|---|---|
+| Baseline server | `simple_server/server.py` | Example |
+
+### What You Can Now Do
+
+You can ship the system.
 """
     )
 
