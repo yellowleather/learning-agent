@@ -6,8 +6,8 @@ This document describes the **actual implementation** of the In-Context Learning
 
 It complements:
 
-- [in_context_learning_loop_design.md](/Users/prakhar/learning_agent/docs/in_context_learning_loop_design.md), which describes the feature design and target behavior,
-- [phase_1_implementation.md](/Users/prakhar/learning_agent/docs/phase_1_implementation.md), which describes the broader Phase 1 platform.
+- [003_in_context_learning_loop_design.md](/Users/prakhar/learning_agent/docs/003_in_context_learning_loop_design.md), which describes the feature design and target behavior,
+- [002_phase_1_implementation.md](/Users/prakhar/learning_agent/docs/002_phase_1_implementation.md), which describes the broader Phase 1 platform.
 
 This guide explains what has actually been built, how it works in code, how the LLM is used, how state is stored, and how to run the flow through the CLI or UI.
 

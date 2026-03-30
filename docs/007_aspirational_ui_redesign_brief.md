@@ -8,7 +8,7 @@ The goal is not a light polish. The goal is to move the product from a local con
 
 This brief is narrower and more implementation-facing than:
 
-- [polished_ui_modernization_plan.md](/Users/prakhar/learning_agent/docs/polished_ui_modernization_plan.md)
+- [005_polished_ui_modernization_plan.md](/Users/prakhar/learning_agent/docs/005_polished_ui_modernization_plan.md)
 
 It defines the next visual target for the current Python-rendered UI in:
 

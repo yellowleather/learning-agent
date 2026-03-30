@@ -4,18 +4,18 @@
 
 This document describes the **actual Phase 1 implementation** of the learning agent platform.
 
-It complements [prd.md](/Users/prakhar/learning_agent/docs/prd.md):
+It complements [001_prd.md](/Users/prakhar/learning_agent/docs/001_prd.md):
 
-- `prd.md` explains the ideal system and the phased architecture,
+- `001_prd.md` explains the ideal system and the phased architecture,
 - this document explains what has been built so far in Phase 1, how it works, and how to use it.
 
 For the concrete implementation of the Learning Assist / In-Context Learning Loop feature, see:
 
-- [in_context_learning_loop_implementation.md](/Users/prakhar/learning_agent/docs/in_context_learning_loop_implementation.md)
+- [004_in_context_learning_loop_implementation.md](/Users/prakhar/learning_agent/docs/004_in_context_learning_loop_implementation.md)
 
 For the planned post-Phase-1 UI evolution, see:
 
-- [polished_ui_modernization_plan.md](/Users/prakhar/learning_agent/docs/polished_ui_modernization_plan.md)
+- [005_polished_ui_modernization_plan.md](/Users/prakhar/learning_agent/docs/005_polished_ui_modernization_plan.md)
 
 Phase 1 is a **guided single-controller MVP**. It is intentionally lighter than the ideal design:
 

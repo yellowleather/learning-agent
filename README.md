@@ -33,6 +33,7 @@ The current implementation is a Phase 1 single-controller system. It reads a roa
 │   ├── state.py               # Persistent and working state storage
 │   └── ui.py                  # Local web UI
 ├── docs/                      # Product and implementation docs
+├── curriculum_generation/     # Prompt assets for standalone roadmap/workspace generation
 ├── tests/                     # Unit tests
 ├── learning_agent.config.json # Repo-local runtime config
 └── pyproject.toml
@@ -138,6 +139,17 @@ Other useful commands:
 .venv/bin/python -m learning_agent status
 ```
 
+Bootstrap a fresh standalone curriculum workspace with Anthropic:
+
+```bash
+export ANTHROPIC_API_KEY=your_key_here
+.venv/bin/python -m learning_agent curriculum bootstrap \
+  --prompt-path curriculum_generation/prompts/ai_inference_engineering_8_week_plan.md \
+  --output-repo-path ai_inference_engineering
+```
+
+This sends the prompt file to Anthropic as-is, writes the returned markdown to `docs/8_week_plan.md` inside the target repo path, and initializes the target repo locally without precreating scaffold directories from the plan.
+
 ## State Files
 
 Runtime state is written under `state/` by default:
@@ -175,7 +187,7 @@ Run tests with:
 
 Key implementation docs:
 
-- `docs/prd.md`
-- `docs/phase_1_implementation.md`
-- `docs/in_context_learning_loop_design.md`
-- `docs/in_context_learning_loop_implementation.md`
+- `docs/001_prd.md`
+- `docs/002_phase_1_implementation.md`
+- `docs/003_in_context_learning_loop_design.md`
+- `docs/004_in_context_learning_loop_implementation.md`

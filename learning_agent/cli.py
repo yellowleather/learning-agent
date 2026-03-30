@@ -9,8 +9,13 @@ from typing import Optional
 
 import typer
 
-from learning_agent.config import load_config
+from learning_agent.config import load_config, load_dotenv, locate_repo_root
 from learning_agent.controller import LearningController
+from learning_agent.curriculum_bootstrap import (
+    DEFAULT_ANTHROPIC_MODEL,
+    DEFAULT_CURRICULUM_PROMPT_PATH,
+    bootstrap_curriculum_workspace,
+)
 from learning_agent.errors import LearningAgentError
 from learning_agent.models import ObservationRecord, ReflectionRecord
 from learning_agent.ui import DEFAULT_UI_HOST, DEFAULT_UI_PORT, serve_ui
@@ -21,11 +26,13 @@ gate_app = typer.Typer(help="Run the concept gate flow.")
 learn_app = typer.Typer(help="Run the Learning Assist flow.")
 task_app = typer.Typer(help="Generate the Junior SWE task.")
 record_app = typer.Typer(help="Record execution progress.")
+curriculum_app = typer.Typer(help="Generate standalone curriculum workspaces.")
 
 app.add_typer(gate_app, name="gate")
 app.add_typer(learn_app, name="learn")
 app.add_typer(task_app, name="task")
 app.add_typer(record_app, name="record")
+app.add_typer(curriculum_app, name="curriculum")
 
 RELOAD_POLL_INTERVAL_SECONDS = 0.75
 RELOAD_WATCH_TARGETS = (
@@ -127,6 +134,42 @@ def init_command() -> None:
         controller = get_controller()
         ledger = controller.initialize()
         typer.echo(f"Initialized Week {ledger.state.current_week} in {controller.state.ledger_path}.")
+    except LearningAgentError as exc:
+        exit_on_error(exc)
+
+
+@curriculum_app.command("bootstrap")
+def curriculum_bootstrap_command(
+    prompt_path: str = typer.Option(
+        DEFAULT_CURRICULUM_PROMPT_PATH,
+        help="Prompt asset path, relative to the source repo root unless absolute.",
+    ),
+    output_repo_path: str = typer.Option(
+        ...,
+        help="Output repository path, relative to the source repo root unless absolute.",
+    ),
+    model: str = typer.Option(
+        DEFAULT_ANTHROPIC_MODEL,
+        help="Anthropic model name to use for roadmap generation.",
+    ),
+) -> None:
+    try:
+        repo_root = locate_repo_root()
+        load_dotenv(repo_root / ".env")
+        resolved_prompt_path = Path(prompt_path)
+        if not resolved_prompt_path.is_absolute():
+            resolved_prompt_path = repo_root / resolved_prompt_path
+        resolved_output_repo_path = Path(output_repo_path)
+        result = bootstrap_curriculum_workspace(
+            repo_root=repo_root,
+            prompt_path=resolved_prompt_path,
+            output_repo_path=resolved_output_repo_path,
+            model=model,
+        )
+        typer.echo(f"Created workspace: {result.workspace_root}")
+        typer.echo(f"Plan: {result.plan_path}")
+        typer.echo(f"Prompt: {result.prompt_path}")
+        typer.echo(f"Model: {result.model}")
     except LearningAgentError as exc:
         exit_on_error(exc)
 

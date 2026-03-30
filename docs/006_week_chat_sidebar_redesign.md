@@ -8,7 +8,7 @@ The goal is not to add more controls. The goal is to simplify the surface so it 
 
 This is a focused design doc, narrower than the broader modernization plan in:
 
-- [polished_ui_modernization_plan.md](/Users/prakhar/learning_agent/docs/polished_ui_modernization_plan.md)
+- [005_polished_ui_modernization_plan.md](/Users/prakhar/learning_agent/docs/005_polished_ui_modernization_plan.md)
 
 It is intended to be implementation-oriented and directly actionable.
 

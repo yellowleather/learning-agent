@@ -14,7 +14,7 @@ The goal is not a visual refresh alone. The goal is to support a better learning
 
 This plan is intentionally forward-looking. It complements the current implementation guide in:
 
-- [phase_1_implementation.md](/Users/prakhar/learning_agent/docs/phase_1_implementation.md)
+- [002_phase_1_implementation.md](/Users/prakhar/learning_agent/docs/002_phase_1_implementation.md)
 
 ## 1.1 Current Status
 
@@ -43,7 +43,7 @@ The long-term architecture recommendation in this document is still valid: the p
 
 For the concrete near-term redesign target for the current server-rendered UI, see:
 
-- [aspirational_ui_redesign_brief.md](/Users/prakhar/learning_agent/docs/aspirational_ui_redesign_brief.md)
+- [007_aspirational_ui_redesign_brief.md](/Users/prakhar/learning_agent/docs/007_aspirational_ui_redesign_brief.md)
 
 ## 2. Why The Current UI Is Not The Right Long-Term Surface
 
