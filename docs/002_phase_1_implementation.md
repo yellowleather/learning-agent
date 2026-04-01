@@ -33,7 +33,7 @@ The current implementation provides:
 - markdown roadmap parsing,
 - Week 1 initialization,
 - persistent ledger state,
-- concept gate generation and scoring,
+- learning-question generation and scoring,
 - structured Junior SWE task generation,
 - artifact syncing against the target repo,
 - metric recording,
@@ -81,11 +81,11 @@ Runtime state is written to:
 ```text
 state/
 ├── progress_ledger.json
-├── current_gate.json
+├── current_learning.json
 └── current_task.json
 ```
 
-Only `progress_ledger.json` is durable state. The gate/task files are replaceable working state for the current week.
+Only `progress_ledger.json` is durable state. The learning/task files are replaceable working state for the current week.
 
 ## 4. Core Architecture
 
@@ -102,7 +102,7 @@ It is responsible for:
 - resolving the current week,
 - enforcing command preconditions,
 - updating the ledger,
-- generating gate/task content through the configured provider.
+- generating learning/task content through the configured provider.
 
 ### 4.2 Curriculum Parser
 
@@ -132,7 +132,7 @@ Persistent state management lives in:
 It reads and writes:
 
 - `progress_ledger.json`
-- `current_gate.json`
+- `current_learning.json`
 - `current_task.json`
 
 ### 4.4 Provider Layer
@@ -145,11 +145,7 @@ The current concrete implementation is:
 
 - [learning_agent/providers/openai_provider.py](/Users/prakhar/learning_agent/learning_agent/providers/openai_provider.py)
 
-Phase 1 uses the provider for three operations:
-
-1. generate a concept gate question,
-2. score the user’s answer,
-3. generate the current-week Junior SWE task.
+Phase 1 uses the provider for current-week learning-question generation and scoring, reading/concept-card generation, and Junior SWE task generation.
 
 ### 4.5 Interfaces
 
@@ -175,7 +171,7 @@ The ledger shape in Phase 1 is:
     "current_week": 1,
     "active_functional_dirs": ["simple_server", "docs"],
     "gates": {
-      "socratic_check_passed": false,
+      "learning_check_passed": false,
       "implementation_complete": false,
       "verification_passed": false,
       "week_approved": false
@@ -202,8 +198,8 @@ The ledger shape in Phase 1 is:
 Within a week:
 
 1. `init` creates the week state.
-2. `gate ask` creates the current gate prompt.
-3. `gate submit` may set `socratic_check_passed = true`.
+2. `learn generate` creates the current learning session.
+3. `learn answer` may set `learning_check_passed = true` once the required baseline questions pass.
 4. `task generate` creates the current task payload.
 5. `record sync` updates completed files and may set `implementation_complete = true`.
 6. `record verify` may set `verification_passed = true`.
@@ -223,8 +219,8 @@ Core commands:
 ```bash
 .venv/bin/python -m learning_agent init
 .venv/bin/python -m learning_agent status
-.venv/bin/python -m learning_agent gate ask
-.venv/bin/python -m learning_agent gate submit --answer "..."
+.venv/bin/python -m learning_agent learn generate
+.venv/bin/python -m learning_agent learn answer --question-id baseline_kv_cache_01 --answer "..."
 .venv/bin/python -m learning_agent task generate
 .venv/bin/python -m learning_agent record sync
 .venv/bin/python -m learning_agent record metric --key latency_p95 --value 420
@@ -236,7 +232,7 @@ Core commands:
 
 Behavioral rules:
 
-- `task generate` is blocked until the concept gate passes,
+- `task generate` is blocked until the learning check passes,
 - `approve` is blocked until files, verification, and metrics are complete,
 - `advance` is blocked until the current week is approved.
 
@@ -257,7 +253,7 @@ The UI supports:
 
 - initializing Week 1,
 - explaining what the platform is for and how to use it,
-- generating and answering the concept gate,
+- generating learning content and answering current-week questions,
 - generating the Junior SWE task,
 - syncing artifacts,
 - recording metrics,
@@ -343,8 +339,8 @@ Additional limitations of the current implementation:
 A normal Phase 1 operator flow is:
 
 1. initialize Week 1,
-2. ask the concept gate question,
-3. answer the concept gate,
+2. generate the learning content,
+3. answer the required baseline questions,
 4. generate the Junior SWE task,
 5. implement the task in the target repo,
 6. sync files,
@@ -360,7 +356,7 @@ The controller is the source of truth for whether each transition is allowed.
 Reasonable next steps after Phase 1 are:
 
 - execute verification commands directly instead of recording them manually,
-- add stronger file-scope validation,
+- add stronger file-boundary validation,
 - add history/audit output to the UI,
 - add provider-independent mocks or offline task generation modes,
 - move from “logical personas” toward stronger role isolation.

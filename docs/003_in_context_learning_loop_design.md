@@ -32,7 +32,7 @@ The In-Context Learning Loop must:
 3. support rigorous free-text questioning, not just lightweight checks,
 4. connect questions to the current week's implementation artifacts and required metrics,
 5. collect structured observations from actual runs,
-6. ask evidence-based questions grounded in those observations,
+6. use those observations and reflections to judge whether the week's evidence is trustworthy,
 7. allow the user to report buggy or unreliable outcomes without forcing fake certainty,
 8. block progression if the platform cannot establish reliable evidence for the current week,
 9. keep all learning scoped to the current unlocked week.
@@ -82,7 +82,7 @@ A concept card is a short teaching unit for the current week. It contains:
 - a common mistake or misconception,
 - optionally one quick check question.
 
-Concept cards are user-optional in the UI, but they are part of the feature design scope.
+Concept cards are user-optional in the UI, but they are part of the feature design surface.
 
 Week 1 example:
 
@@ -99,32 +99,23 @@ A question is an assessment unit. Questions are generated and stored with explic
 Each question should have:
 
 - `type`
-- `scope`
 - `depth`
 - `prompt_text`
 - `scoring_rubric`
-- `roadmap_anchor`
-- `observation_required`
 
 Field explanations:
 
-- `type`: whether the question is conceptual, implementation-oriented, or grounded in observed results.
-- `scope`: whether the question is required for the current week, adjacent enrichment, or better suited for a later week.
+- `type`: the runtime question kind. In the simplified design this is always `core`.
 - `depth`: whether the question is baseline, deep, or stretch difficulty.
 - `prompt_text`: the exact question shown to the user.
 - `scoring_rubric`: the specific ideas required for a passing answer.
-- `roadmap_anchor`: the curriculum concept, deliverable, or metric the question is tied to.
-- `observation_required`: whether the question depends on actual measured output from the user's artifact.
 
 Week 1 example:
 
-- `type`: `concept`
-- `scope`: `core`
+- `type`: `core`
 - `depth`: `baseline`
 - `prompt_text`: "What is the difference between prefill and decode, and why does that difference matter when benchmarking a simple inference server?"
 - `scoring_rubric`: "A passing answer must explain that prefill processes the prompt, decode generates tokens sequentially, and the distinction matters because latency behavior differs across the two phases."
-- `roadmap_anchor`: `{ "week": 1, "concept": "prefill_vs_decode", "deliverable": "simple_server/benchmark.py" }`
-- `observation_required`: `false`
 
 ### 6.3 Observation
 
@@ -168,57 +159,44 @@ Week 1 example:
 
 ## 7. Question Model
 
-The system should not use a single tier axis for everything. It should separate question type from scope and depth.
+The system should not use a single tier axis for everything. It should keep depth separate from question identity.
 
-### 7.1 Question Type
-
-- `concept`
-- `implementation`
-- `evidence_based`
-
-### 7.2 Scope
-
-- `core`
-- `adjacent`
-- `later_week`
-
-### 7.3 Depth
+### 7.1 Depth
 
 - `baseline`
 - `deep`
 - `stretch`
 
-This model allows the system to keep broad question banks without confusing "interesting" with "required now."
+This model allows the system to keep a broad concept bank without confusing question identity with question difficulty.
 
-Week 1 classification examples:
+Week 1 depth examples:
 
-- `concept/core/baseline`: "What is TTFT, and how is it different from tokens per second?"
-- `implementation/core/baseline`: "How would you load a HuggingFace causal language model and expose it through `POST /generate`?"
-- `concept/adjacent/deep`: "Why is decode often described as more memory-bound than prefill?"
-- `concept/later_week/stretch`: "Why might a production system separate prefill and decode into different schedulers?"
+- `baseline`: "What is TTFT, and how is it different from tokens per second?"
+- `deep`: "Why is decode often described as more memory-bound than prefill?"
+- `stretch`: "Why might a production system quantize the KV cache separately from model weights?"
 
 ## 8. Weekly Question Bank Strategy
 
 Each week should have a sizable question bank, typically 12-50 questions. The bank should include:
 
 - foundational concept checks,
-- implementation-readiness questions,
-- evidence-based questions that activate only after observations exist.
+- deeper conceptual probes tied to the week's system shape,
+- stretch questions that push toward ceiling-level tradeoff reasoning.
 
 The system should preserve both:
 
 - broad foundational questions for coverage,
 - deeper conceptual probes for stretch and advanced rigor.
 
-Deep conceptual probes are valuable but should not automatically become mandatory unlock gates unless they align directly with the week's required scope.
+Deep conceptual probes are valuable but should not automatically become mandatory unlock gates unless they align directly with the week's required deliverables and concepts.
 
 ## 9. Weekly Learning Flow
 
 The In-Context Learning Loop for a given week is:
 
 1. Load the current unlocked week.
-2. Generate a sizable set of `concept` and `implementation` questions from the current week plan.
-3. Generate blog-style reading material scoped to the week and sufficient to answer those questions.
+2. Generate a sizable set of `core` concept questions from the current week plan.
+3. Generate blog-style reading material for the week and sufficient to answer those questions.
 The first block should orient the learner to the week, and the remaining blocks should be generated from the actual question themes rather than from a fixed Week 1 template.
 4. Generate concept cards from the reading material so they act as anchors to that explainer.
 5. Present the reading and cards in the Learn UI while the user answers the question set.
@@ -226,10 +204,9 @@ The first block should orient the learner to the week, and the remaining blocks 
 7. Generate the Junior SWE task for the week.
 8. Implement and verify the required artifacts.
 9. Collect a structured observation from the resulting artifact or benchmark.
-10. If the observation is sufficiently reliable, ask `evidence_based` questions tied to that observation.
-11. Collect a reflection from the user.
-12. Decide whether the week has satisfied conceptual, implementation, verification, and evidence reliability gates.
-13. Unlock the next week only after all required gates pass and the user approves.
+10. Collect a reflection from the user.
+11. Decide whether the week has satisfied conceptual, implementation, verification, and evidence reliability gates.
+12. Unlock the next week only after all required gates pass and the user approves.
 
 Design rule:
 
@@ -247,7 +224,7 @@ Each checkpoint runs its own mini learning loop:
 
 1. teach the relevant concept,
 2. ask the relevant questions,
-3. perform the scoped build or measurement step,
+3. perform the current build or measurement step,
 4. collect an observation if applicable,
 5. collect a reflection if applicable,
 6. decide whether the checkpoint passes or fails.
@@ -258,7 +235,7 @@ Linear checkpoints are useful when later work in the same week depends on earlie
 
 - a week may have zero or more subgates,
 - subgates are derived by the controller from the current week's concepts, deliverables, and verification needs,
-- subgates must remain fully scoped to the current unlocked week,
+- subgates must remain fully tied to the current unlocked week,
 - subgates should be used only when they materially reduce risk or improve clarity,
 - a week should usually have a small number of subgates, typically 2-5,
 - subgates are linear checkpoints, not a dependency graph,
@@ -270,7 +247,7 @@ Linear checkpoints are useful when later work in the same week depends on earlie
 
 For Week 1, a reasonable subgate structure could be:
 
-- `core_concepts`
+- `learning_questions`
   Covers token generation, prefill vs decode, latency vs throughput, and tokens per second.
 - `model_serving`
   Confirms that the model loads, inference works, and `POST /generate` is functional.
@@ -300,13 +277,13 @@ When a required subgate fails:
 
 1. the system records the failure reason,
 2. later checkpoints do not open,
-3. the Junior SWE agent may make a bounded remediation attempt if the issue is within agent scope,
+3. the Junior SWE agent may make a bounded remediation attempt if the issue is within agent responsibility,
 4. if the agent cannot fix the issue, the user is prompted to intervene,
 5. the week cannot pass until the required subgate passes.
 
 Week 1 examples:
 
-- if `core_concepts` fails, the user may retry after reviewing concept cards or feedback, but week completion remains blocked,
+- if `learning_questions` fails, the user may retry after reviewing concept cards or feedback, but week completion remains blocked,
 - if `model_serving` fails, the next checkpoint does not open,
 - if `benchmarking` fails, the evidence checkpoint does not open,
 - if `evidence_reliability` fails, later modules remain locked until trustworthy results are established.
@@ -397,7 +374,7 @@ If the evidence is unreliable and the agent cannot fix it, the user must interve
 
 ## 12. Required vs User-Optional Behavior
 
-The distinction must be between runtime user choice and design scope.
+The distinction must be between runtime user choice and design intent.
 
 ### 12.1 User-Optional at Runtime
 
@@ -415,7 +392,7 @@ The distinction must be between runtime user choice and design scope.
 - reflection capture,
 - explicit evidence reliability gating.
 
-User-optional at runtime does not mean out of scope for the design.
+User-optional at runtime does not mean outside the design surface.
 
 ## 13. Evidence Reliability
 
@@ -432,7 +409,7 @@ Evidence is considered reliable when:
 
 ### 13.2 Invalid Evidence States
 
-The system should be able to classify the current state as:
+The system should be able to represent the current state as:
 
 - `valid`
 - `invalid_due_to_bug`
@@ -445,7 +422,7 @@ If evidence is not reliable, the current week is blocked.
 
 That means:
 
-- evidence-based questions cannot be treated as valid proof of understanding,
+- unreliable evidence cannot be treated as valid proof of understanding,
 - later modules remain locked,
 - the Junior SWE agent cannot proceed to downstream work that depends on the current artifact,
 - the user must be prompted to resolve the blocker if the agent cannot.
@@ -501,7 +478,7 @@ The design/system name remains **In-Context Learning Loop**.
 
 ### 16.2 UX Expectations
 
-- the UI must clearly distinguish concept questions from evidence-based questions,
+- the UI must clearly distinguish the learning-question workspace from the evidence-recording workflow,
 - the UI must make it clear when evidence is considered unreliable,
 - the UI must tell the user whether the Junior SWE agent is blocked,
 - the UI must not reveal future-week material.
@@ -523,7 +500,7 @@ Generated content must be constrained by:
 - required metrics,
 - allowed directories and artifacts.
 
-LLM generation is a bootstrap mechanism, not the final source of truth. Generated questions should be tagged, reviewed, and trimmed to current scope when necessary.
+LLM generation is a bootstrap mechanism, not the final source of truth. Generated questions should be tagged, reviewed, and trimmed to the current week when necessary.
 
 ## 18. Phase 1 Fit
 

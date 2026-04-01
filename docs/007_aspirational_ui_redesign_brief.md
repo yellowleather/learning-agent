@@ -26,7 +26,7 @@ now follows this higher-level structure:
 
 - a product top bar with brand, week/title route, progress state, and utility actions,
 - a center header that now includes a playful marathon-progress strip with a runner, weekly flags, and a finish marker,
-- a lighter left rail for scope, progress, deliverables, metrics, and approval readiness,
+- a lighter left rail for week context, progress, deliverables, metrics, and approval readiness,
 - a dominant center workspace for the current assessment and implementation work,
 - a simplified right-side `Assistant` rail with prompt shortcuts, thread switching, and chat,
 - a horizontal four-step workflow bar instead of the earlier accordion-first center flow.
@@ -115,7 +115,7 @@ The left rail is now a persistent product rail, not an overflow status drawer.
 
 It should contain:
 
-- scope,
+- week context,
 - progress,
 - deliverables,
 - benchmark metrics,

@@ -16,15 +16,15 @@ This guide explains what has actually been built, how it works in code, how the 
 The current implementation provides:
 
 - Learning Assist generation for the current unlocked week,
-- concept cards,
-- typed question banks with `type`, `scope`, `depth`, and rubric metadata,
+- a multi-stage learning pipeline built from question banks, reading material, concept cards, and derived figure assets,
+- question banks with `depth` and rubric metadata,
 - free-text question answering and scoring,
 - structured observation capture,
 - reflection capture,
-- evidence-based follow-up question generation after a valid observation,
 - checkpoint derivation for the current week,
 - explicit `evidence_reliable` gating,
-- approval blocking when evidence is missing or unreliable.
+- approval blocking when evidence is missing or unreliable for evidence-requiring weeks,
+- a week-scoped Assistant/topic-chat surface in the UI.
 
 The current implementation is still a **Phase 1 single-controller system**:
 
@@ -40,16 +40,19 @@ The main implementation lives in:
 
 ```text
 learning_agent/
+├── assets/
+│   └── illustrations/
 ├── providers/
 │   ├── base.py
+│   ├── factory.py
 │   └── openai_provider.py
 ├── prompts/
 │   ├── junior.md
 │   └── mentor.md
 ├── cli.py
 ├── controller.py
-├── curriculum.py
 ├── models.py
+├── prompts.py
 ├── state.py
 └── ui.py
 ```
@@ -66,24 +69,33 @@ The most relevant files are:
 
 ## 4. Core Data Model
 
-### 4.1 New Models
+### 4.1 Main Models
 
-The implementation adds these main data structures in [learning_agent/models.py](/Users/prakhar/learning_agent/learning_agent/models.py):
+The implementation uses these main data structures in [learning_agent/models.py](/Users/prakhar/learning_agent/learning_agent/models.py):
 
-- `ConceptCard`
 - `LearningQuestion`
+- `LearningQuestionBankPayload`
 - `QuestionScore`
 - `QuestionAttempt`
-- `LearningAssistPayload`
-- `EvidenceQuestionPayload`
+- `ReadingSection`
+- `ReadingMaterialPayload`
+- `ConceptCard`
+- `ConceptCardPayload`
+- `FigureAsset`
 - `LearningSession`
+- `LearningBundle`
+- `TopicChatTurn`
 - `ObservationRecord`
 - `ReflectionRecord`
 - `CheckpointState`
+- `TaskSession`
 
-The week-level ledger state also now includes:
+Important relationships in the current implementation:
 
-- `learning_assist_enabled`
+- `LearningSession` stores the current week's concept cards, figures, reading sections, questions, and attempts.
+
+The week-level ledger state also includes:
+
 - `observation`
 - `reflection`
 - `gates.evidence_reliable`
@@ -92,26 +104,27 @@ The week-level ledger state also now includes:
 
 The implemented week gates are:
 
-- `socratic_check_passed`
+- `learning_check_passed`
 - `implementation_complete`
 - `verification_passed`
 - `evidence_reliable`
 - `week_approved`
 
-The code still uses the older field name `socratic_check_passed`, but in practice it now covers:
+The `learning_check_passed` gate is satisfied by passing all required Learning Assist baseline questions.
 
-- the legacy single gate question, or
-- the Learning Assist required baseline core-question coverage.
+In the current code, the required Learning Assist questions are those with:
+
+- `depth == "baseline"`
 
 ### 4.3 Checkpoints
 
-The controller derives lightweight linear checkpoints at runtime in [learning_agent/controller.py](/Users/prakhar/learning_agent/learning_agent/controller.py):
+The controller derives lightweight runtime checkpoints in [learning_agent/controller.py](/Users/prakhar/learning_agent/learning_agent/controller.py):
 
-- `core_concepts`
+- `learning_questions`
 - `implementation`
 - `evidence_reliability`
 
-These are not curriculum-authored objects. They are computed from current ledger state, learning session state, verification state, and evidence state.
+These are not curriculum-authored objects. They are computed from ledger state, learning-session state, verification state, and evidence state.
 
 ## 5. Runtime State Files
 
@@ -120,7 +133,6 @@ Runtime state is currently written into:
 ```text
 state/
 ├── progress_ledger.json
-├── current_gate.json
 ├── current_learning.json
 └── current_task.json
 ```
@@ -131,11 +143,11 @@ State management lives in:
 
 `progress_ledger.json` remains the durable week-state file.
 
-`current_gate.json`, `current_learning.json`, and `current_task.json` are replaceable working-state files for the active week.
+`current_learning.json` and `current_task.json` are replaceable working-state files for the active week.
 
 ### 5.1 Ledger Shape
 
-The ledger now looks roughly like this:
+The ledger looks roughly like this:
 
 ```json
 {
@@ -147,9 +159,8 @@ The ledger now looks roughly like this:
   "state": {
     "current_week": 1,
     "active_functional_dirs": ["simple_server", "docs"],
-    "learning_assist_enabled": true,
     "gates": {
-      "socratic_check_passed": false,
+      "learning_check_passed": false,
       "implementation_complete": false,
       "verification_passed": false,
       "evidence_reliable": false,
@@ -182,38 +193,64 @@ The orchestration entrypoint is:
 
 ### 6.1 Main Operations
 
-The controller now supports:
+The controller currently supports:
 
 1. `initialize()`
-2. `generate_learning_assist()`
-3. `answer_learning_question()`
-4. `generate_task()`
-5. `sync_artifacts()`
-6. `record_metric()`
-7. `record_observation()`
-8. `record_reflection()`
-9. `record_verification()`
-10. `approve_week()`
-11. `advance_week()`
+2. `status()`
+3. `generate_learning_assist()`
+4. `answer_learning_question()`
+5. `generate_task()`
+6. `sync_artifacts()`
+7. `record_metric()`
+8. `record_observation()`
+9. `record_reflection()`
+10. `record_verification()`
+11. `approve_week()`
+12. `advance_week()`
+13. `ensure_learning_assist()`
+14. `get_learning_bundle()`
+15. `answer_topic_chat()`
+16. `stream_topic_chat()`
 
-### 6.2 Actual Week Flow
+### 6.2 Actual Learning Assist Flow
 
-The implemented flow for a week is:
+The implemented Learning Assist pipeline is **questions first**, but it is now explicitly multi-stage:
+
+1. generate a current-week question bank directly in the final `LearningQuestion` schema,
+2. validate the generated questions in the controller,
+3. generate learner-facing reading sections from the question bank,
+4. validate and normalize reading sections,
+5. generate concept cards from the reading sections,
+6. validate and normalize concept cards,
+7. derive figure assets,
+8. save the assembled `LearningSession`.
+
+The current `LearningSession` contains:
+
+- `concept_cards`
+- `figures`
+- `reading_sections`
+- `questions`
+- `attempts`
+
+### 6.3 Actual Week Flow
+
+The implemented week flow is:
 
 1. initialize the week ledger from the roadmap,
-2. generate Learning Assist content,
-3. answer the required baseline core questions,
-4. mark conceptual coverage complete once required questions pass,
+2. generate Learning Assist content through the pipeline above,
+3. answer the required baseline questions,
+4. automatically mark conceptual coverage complete once all required questions pass,
 5. generate the Junior SWE task,
 6. build the required files in the target repo,
 7. sync artifacts and record verification,
-8. record a structured observation,
-9. if the observation is `valid`, generate evidence-based follow-up questions,
-10. answer evidence-based questions if desired,
-11. record a reflection,
-12. approve the week only after all blockers are cleared.
+8. record required metrics,
+9. record a structured observation,
+10. record a reflection,
+11. approve the week only after all blockers are cleared,
+12. advance to the next week after approval.
 
-### 6.3 Approval Rules
+### 6.4 Approval Rules
 
 Week approval is blocked if any of the following remain incomplete:
 
@@ -221,9 +258,11 @@ Week approval is blocked if any of the following remain incomplete:
 - required files incomplete,
 - verification not passed,
 - required metrics missing,
-- observation missing for a metrics-based week,
-- evidence marked unreliable,
-- reflection missing.
+- observation missing for an evidence-requiring week,
+- evidence marked unreliable for an evidence-requiring week,
+- reflection missing for an evidence-requiring week.
+
+Evidence is currently considered required when the week has one or more required metrics.
 
 This logic is enforced in `_approval_blockers()` in [learning_agent/controller.py](/Users/prakhar/learning_agent/learning_agent/controller.py).
 
@@ -246,11 +285,11 @@ The two prompt files are:
 
 The Mentor prompt is used for:
 
-- Learning Assist generation,
-- legacy concept-gate generation,
-- gate scoring,
+- question-bank generation,
+- reading-material generation,
+- concept-card generation from reading,
 - per-question scoring,
-- evidence-based follow-up question generation.
+- topic-chat responses.
 
 The Junior prompt is used for:
 
@@ -258,51 +297,57 @@ The Junior prompt is used for:
 
 ### 7.2 Generation Strategy
 
-The current implementation uses a **questions-first learning pipeline**.
+The current implementation uses a **questions-first, validated pipeline**.
 
 Specifically:
 
-1. `generate_learning_assist()` first generates and classifies the current week's question bank from the week plan.
-2. The provider then writes blog-style reading material designed to make those questions answerable.
-The provider keeps `How This Week Works` as the opening orientation block, but the remaining reading blocks are generated dynamically from the current week's classified question themes.
-3. The provider then generates concept cards from the reading material so the cards act as anchors rather than parallel mini-lessons.
-4. `generate_task()` makes a separate LLM call for the implementation brief.
-5. `record_observation()` may trigger one additional LLM call to generate evidence-based questions after a `valid` observation.
-6. `answer_learning_question()` makes one LLM call per submitted answer to score it against the rubric.
-7. the older `gate ask` and `gate submit` flow remains available as a separate legacy path.
-
-### 7.3 Current Learning Assist Prompting
-
-The Learning Assist prompt is built in [learning_agent/providers/openai_provider.py](/Users/prakhar/learning_agent/learning_agent/providers/openai_provider.py).
-
-Its current question-generation structure is:
-
-```text
-Create the current week's Learning Assist question bank.
-Use only the provided current-week context and ledger state. Output JSON only.
-Return a sizable question bank. Include core baseline questions that cover the week,
-plus some deeper or adjacent questions. Evidence-based questions should be marked with observation_required=true.
-Current week context:
-{week_spec JSON}
-Current ledger state:
-{ledger_state JSON}
-Required JSON shape: {"week": 1, "questions": [...]}
-```
+1. `generate_learning_assist()` asks the provider for a large current-week question bank.
+2. The provider targets at least 50 concept questions across `baseline`, `deep`, and `stretch` in a single generation call.
+3. The controller validates counts, uniqueness, depth coverage, and schema shape before continuing.
+4. The provider writes blog-style reading material designed to make the question bank answerable.
+5. The provider generates concept cards from the reading material, not directly from the question bank.
+6. The controller normalizes section/card IDs and assigns illustration-backed figure assets.
+7. `answer_learning_question()` makes one LLM call per submitted answer to score it against the question rubric and current observation context, if any.
 
 The important implementation detail is that generation is constrained by:
 
 - current `WeekSpec`
 - current `ProgressState`
-- fixed response schema
+- fixed response schemas
+- controller-side validation and normalization
 
-The provider does not have access to future weeks if the controller does not pass them in.
+The provider does not receive future weeks unless the controller passes them in.
 
-The current controller then derives the rest of the learning bundle in this order:
+### 7.3 Current Prompting Shape
 
-1. questions,
-2. blog-style reading blocks built to support those questions,
-3. concept cards generated from the reading sections,
-4. question-to-reading and question-to-card links used by the UI.
+The implementation no longer uses a single generic Learning Assist prompt. It now uses separate prompt families for:
+
+1. question generation,
+2. reading generation,
+3. concept-card generation,
+4. answer scoring,
+5. topic chat.
+
+The question-generation prompt currently looks roughly like:
+
+```text
+Generate a comprehensive current-week concept question bank in the application's final schema. Output JSON only.
+Do not generate concept cards in this step.
+Generate at least 50 questions total across baseline, deep, and stretch depths.
+Stay fully scoped to this week only.
+Return each question with only: id, depth, prompt_text, scoring_rubric.
+```
+
+The reading prompt then generates 3-6 reading blocks and requires:
+
+- the first block to be `week_map`,
+- the title `How This Week Works`,
+- a blog-style explainer tone rather than UI or product language.
+
+The concept-card prompt then derives cards from the reading material and requires:
+
+- 5-10 concept cards,
+- learner-facing technical explanations rather than UI copy.
 
 ## 8. CLI Usage
 
@@ -318,8 +363,7 @@ The current In-Context Learning Loop commands are:
 .venv/bin/python -m learning_agent init
 .venv/bin/python -m learning_agent status
 .venv/bin/python -m learning_agent learn generate
-.venv/bin/python -m learning_agent learn answer --question-id core_prefill --answer "..."
-.venv/bin/python -m learning_agent learn assist --enabled
+.venv/bin/python -m learning_agent learn answer --question-id prefill_decode_baseline --answer "..."
 .venv/bin/python -m learning_agent task generate
 .venv/bin/python -m learning_agent record sync
 .venv/bin/python -m learning_agent record metric --key latency_p95 --value 420
@@ -330,12 +374,24 @@ The current In-Context Learning Loop commands are:
 .venv/bin/python -m learning_agent advance
 ```
 
-The older gate commands also still exist:
+Other currently implemented commands that matter to the same workflow surface are:
 
 ```bash
-.venv/bin/python -m learning_agent gate ask
-.venv/bin/python -m learning_agent gate submit --answer "..."
+.venv/bin/python -m learning_agent serve
+.venv/bin/python -m learning_agent curriculum bootstrap --output-repo-path <path>
 ```
+
+`status` reports:
+
+- current week metadata,
+- required and completed files,
+- required and recorded metrics,
+- gate state,
+- verification, observation, and reflection state,
+- derived checkpoints,
+- question progress,
+- approval blockers,
+- current task and learning sessions when present.
 
 ## 9. UI Usage
 
@@ -349,28 +405,24 @@ Defaults:
 
 - host: `127.0.0.1`
 - port: `4010`
+- reload: enabled by default from the CLI wrapper
 
-### 9.1 Current UI Flow
+### 9.1 Current UI Behavior
 
-In the current UI, the intended order is:
+In the current UI:
 
-1. `Initialize Week 1`
-2. `Generate Learning Assist`
-3. answer Learning Assist questions
-4. `Generate Task`
-5. build artifacts in the target repo
-6. `Sync Artifacts`
-7. `Record Observation`
-8. `Record Reflection`
-9. `Record Verification`
-10. `Approve Week`
-11. `Advance Week`
+1. Week state is loaded from the ledger.
+2. If the week is initialized but no learning session exists yet, the UI tries to auto-load Learning Assist.
+3. The learner answers current-week questions and progresses through the build, verify, and approve steps.
+4. The Assistant panel can answer week-scoped questions using current progress, artifacts, metrics, and learning context.
 
 The current UI supports:
 
 - Learning Assist visibility toggle,
-- concept card display,
-- question bank display,
+- reading-section display,
+- concept-card display,
+- figure/illustration display,
+- question-bank display,
 - question answering,
 - task generation,
 - artifact sync,
@@ -379,7 +431,10 @@ The current UI supports:
 - reflection entry,
 - verification entry,
 - checkpoint rendering,
-- approval blocker rendering.
+- approval blocker rendering,
+- week-scoped topic chat through `/api/topic-chat`.
+
+The current UI does **not** persist chat server-side. Chat sessions stay local to the browser for the active week.
 
 ## 10. Current Limitations
 
@@ -389,11 +444,11 @@ The implementation is useful, but it is still intentionally lightweight.
 
 Required question coverage is currently derived by controller heuristics:
 
-- `scope == "core"`
 - `depth == "baseline"`
-- `observation_required == false`
 
-There is not yet a curriculum-authored quota such as "must pass 8 of 12 core questions."
+The learner must currently pass **all** such questions to satisfy the Learning Assist path for `learning_check_passed`.
+
+There is not yet a curriculum-authored quota such as "must pass 8 of 12 baseline questions."
 
 ### 10.2 Evidence Logic
 
@@ -402,51 +457,73 @@ Evidence reliability is currently set from the observation and may be overridden
 - observation reliability `valid` sets `gates.evidence_reliable = true`
 - reflection marked buggy or untrustworthy sets it back to `false`
 
+There are no separate evidence-question follow-ups in the current implementation. Evidence is handled through observation capture, metric recording, and reflection.
+
 This is intentionally conservative, but it is not a full measurement-validation engine.
 
-### 10.3 Question Generation
+### 10.3 Generation Pipeline
 
-Initial cards and questions are generated in one shot.
+Learning Assist generation is now multi-stage and validated, but it is still heavily model-driven.
 
-That keeps the implementation simple, but it also means:
+That means:
 
-- question count is model-driven,
-- card quality is model-driven,
-- deduplication and balancing are limited,
-- there is no deterministic quota expansion step yet.
+- question-bank quality is still model-driven,
+- reading and card quality are still model-driven,
+- depth balancing is validated against heuristics rather than curriculum-authored quotas,
+- the assembled learning bundle is not fully deterministic.
 
-### 10.4 Checkpoints
+### 10.4 UI / CLI Parity
+
+The UI auto-loads Learning Assist when possible, but CLI `init` still only initializes the ledger.
+
+That means:
+
+- UI users may see Learning Assist appear automatically,
+- CLI users still need to run `learn generate` explicitly,
+- the two entry experiences are not fully symmetric.
+
+### 10.5 Checkpoints
 
 Checkpoints are currently derived and displayed, but they are not enforced as fully separate executable subflows with their own isolated working state.
+
+### 10.6 Topic Chat
+
+Topic chat is grounded in current week context and app state, but it is still a lightweight prompting layer:
+
+- it is not a general code-execution agent,
+- it does not persist server-side chat history,
+- it does not replace the explicit learning-check and approval logic.
 
 ## 11. Recommended Next Steps
 
 The most sensible next improvements are:
 
-1. add deterministic quotas for required question coverage,
-2. validate generated question banks for duplicates and scope leakage before saving,
-3. auto-generate Learning Assist immediately after week initialization,
-4. add stronger structured validation for observations,
-5. allow curriculum-authored checkpoint hints when heuristic derivation is insufficient.
+1. add curriculum-authored quotas or requirements for conceptual coverage instead of the current all-baseline heuristic,
+2. decide whether evidence-question answering should remain optional or become part of approval,
+3. strengthen structured observation validation and artifact existence checks,
+4. align CLI `init` behavior with the UI's Learning Assist auto-load behavior,
+5. allow curriculum-authored checkpoint hints when heuristic derivation is insufficient,
+6. decide whether topic-chat state should remain browser-local or become durable app state.
 
 ## 12. Summary
 
-The In-Context Learning Loop is now implemented as a real Phase 1 feature, not just a design note.
+The In-Context Learning Loop is implemented as a real Phase 1 feature, not just a design note.
 
 The current implementation adds:
 
-- on-platform concept cards,
-- question-bank generation,
-- free-text answer scoring,
+- multi-stage Learning Assist generation,
+- on-platform reading sections, concept cards, and derived figure assets,
+- typed question-bank generation and scoring,
 - structured observation and reflection capture,
 - evidence-based follow-up questioning,
 - explicit evidence-reliability gating,
-- CLI and UI support for the full loop.
+- CLI and UI support for the full loop,
+- a week-scoped Assistant/topic-chat surface in the UI.
 
 The implementation remains intentionally simple:
 
 - one controller,
-- one-shot generation per feature,
-- JSON-shaped provider outputs,
+- OpenAI-backed structured generation/scoring outputs plus streamed topic-chat text,
+- controller-side validation and normalization,
 - runtime-derived checkpoints,
 - explicit approval blockers instead of hidden progression logic.

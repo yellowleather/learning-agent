@@ -135,7 +135,6 @@ Other useful commands:
 ```bash
 .venv/bin/python -m learning_agent gate ask
 .venv/bin/python -m learning_agent gate submit --answer "..."
-.venv/bin/python -m learning_agent learn assist --enabled
 .venv/bin/python -m learning_agent status
 ```
 
@@ -157,7 +156,6 @@ Runtime state is written under `state/` by default:
 ```text
 state/
 ├── progress_ledger.json
-├── current_gate.json
 ├── current_learning.json
 └── current_task.json
 ```

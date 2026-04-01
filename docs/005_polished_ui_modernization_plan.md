@@ -22,7 +22,7 @@ The plan below is no longer purely aspirational. A first polished `Learn` vertic
 
 - the app now uses a more product-like shell with a top bar, persistent side rails, and a dominant center workspace,
 - the workspace header now includes a playful marathon-style progress strip with a runner, weekly markers, and a finish flag,
-- the left rail now carries scope, progress, deliverables, benchmark metrics, and approval readiness,
+- the left rail now carries week context, progress, deliverables, benchmark metrics, and approval readiness,
 - the main `Learn` surface is centered on a `Current Assessment` workspace rather than the older concept-card-first layout,
 - the implementation section is visible directly below the assessment workspace,
 - the right side now includes a multi-session `Assistant` rail with prompt shortcuts, thread switching, and browser-local week chat,
@@ -151,7 +151,7 @@ Left pane:
 
 Current server-rendered implementation note:
 
-- this richer left-pane reading workspace is not the primary shipped layout today; the current UI instead keeps scope/progress utilities in the left rail and exposes broader question navigation through the assessment modal.
+- this richer left-pane reading workspace is not the primary shipped layout today; the current UI instead keeps week/progress utilities in the left rail and exposes broader question navigation through the assessment modal.
 
 Right pane:
 
@@ -206,7 +206,7 @@ The polished UI depends on structured content, not monolithic blobs.
 The system should move away from treating learning content as only:
 
 - concept cards,
-- raw/classified questions.
+- question lists.
 
 It should add a richer bundle for the learning experience.
 
@@ -220,7 +220,6 @@ It should add a richer bundle for the learning experience.
 - `why_it_matters`
 - `common_mistake`
 - `image`
-- `related_section_ids`
 
 `Figure`
 
@@ -235,7 +234,6 @@ It should add a richer bundle for the learning experience.
 - `title`
 - `body_markdown`
 - `figure_ids`
-- `related_concept_ids`
 
 `LearningBundle`
 
@@ -244,14 +242,6 @@ It should add a richer bundle for the learning experience.
 - `figures[]`
 - `reading_sections[]`
 - `questions[]`
-
-### 6.2 Question Linking
-
-Questions should be extended with:
-
-- `related_concept_ids`
-
-Question-to-reading links are intentionally omitted. Reading material should stay a standalone learning surface rather than being chopped into question-level references.
 
 Current product-direction note:
 
@@ -431,7 +421,7 @@ PR 6:
 
 The first milestone should not try to solve everything.
 
-Specifically out of scope:
+Specifically outside this milestone:
 
 - mandatory AI-generated images,
 - multi-user collaboration,
