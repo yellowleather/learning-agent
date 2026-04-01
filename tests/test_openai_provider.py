@@ -5,11 +5,10 @@ import openai
 
 from learning_agent.errors import LearningAgentError
 from learning_agent.models import (
-    ClassifiedQuestionBankPayload,
     ConceptCardPayload,
     LearningQuestion,
+    LearningQuestionBankPayload,
     ProgressState,
-    RawQuestionBankPayload,
     ReadingMaterialPayload,
     TopicChatTurn,
 )
@@ -28,67 +27,23 @@ def _week_spec() -> dict:
     }
 
 
-def test_normalize_raw_payload_maps_common_tier_variants():
-    provider = OpenAIProvider(model="test-model")
-    payload = {
-        "week": 1,
-        "questions": [
-            {
-                "prompt_text": "Explain the result.",
-                "tier": "Tier 2",
-                "topic_area": "benchmarking",
-            }
-        ],
-    }
-
-    normalized = provider._normalize_payload(payload, RawQuestionBankPayload)
-
-    assert normalized["questions"][0]["tier"] == "implementation_knowledge"
-
-
-def test_normalize_classified_payload_maps_common_question_variants():
+def test_normalize_question_bank_payload_maps_question_variants():
     provider = OpenAIProvider(model="test-model")
     payload = {
         "week": 1,
         "questions": [
             {
                 "id": "q1",
-                "type": "implementation_oriented",
-                "scope": "required",
+                "prompt_text": "Explain the result.",
                 "depth": "intermediate",
-                "prompt_text": "Show evidence.",
-                "scoring_rubric": ["Provide evidence."],
-                "roadmap_anchor": {"week": 1},
-                "observation_required": False,
+                "scoring_rubric": ["Explain the tradeoff."],
             }
         ],
     }
 
-    normalized = provider._normalize_payload(payload, ClassifiedQuestionBankPayload)
+    normalized = provider._normalize_payload(payload, LearningQuestionBankPayload)
 
-    assert normalized["questions"][0]["type"] == "implementation"
-    assert normalized["questions"][0]["scope"] == "core"
     assert normalized["questions"][0]["depth"] == "deep"
-
-
-def test_validate_raw_question_bank_rejects_small_bank():
-    provider = OpenAIProvider(model="test-model")
-    payload = RawQuestionBankPayload.model_validate(
-        {
-            "week": 1,
-            "questions": [
-                {
-                    "prompt_text": "Show evidence.",
-                    "tier": "foundational_concepts",
-                    "topic_area": "prefill_vs_decode",
-                }
-            ],
-        }
-    )
-
-    errors = provider._validate_raw_question_bank(payload)
-
-    assert any("at least 60 raw questions" in error for error in errors)
 
 
 def test_answer_topic_chat_uses_week_context_and_history(monkeypatch):
@@ -144,17 +99,13 @@ def test_generate_reading_material_uses_blog_style_contract(monkeypatch):
 
     payload = provider.generate_reading_material(
         week_spec=_week_spec(),
-        ledger_state=ProgressState(current_week=1, learning_assist_enabled=True),
+        ledger_state=ProgressState(current_week=1),
         questions=[
             LearningQuestion(
                 id="q1",
-                type="concept",
-                scope="core",
                 depth="baseline",
                 prompt_text="Explain prefill vs decode.",
                 scoring_rubric=["Mention prompt processing."],
-                roadmap_anchor={"week": 1},
-                observation_required=False,
             )
         ],
     )
@@ -164,7 +115,7 @@ def test_generate_reading_material_uses_blog_style_contract(monkeypatch):
     assert "technical blog post or explainer" in prompt
     assert "Do not mention the words chapter, section, concept card" in prompt
     assert '"id": "week_map"' in prompt
-    assert "The remaining reading blocks should be generated dynamically from the classified question bank." in prompt
+    assert "The remaining reading blocks should be generated dynamically from the question bank." in prompt
     assert "Do not assume Week 1 topics such as prefill/decode unless they are clearly supported by the provided questions." in prompt
     assert captured["response_model"] is ReadingMaterialPayload
 
@@ -188,7 +139,6 @@ def test_generate_concept_cards_from_reading_uses_reading_material_contract(monk
                     "why_it_matters": "It explains why prompt length and output length stress the system differently.",
                     "common_mistake": "Treating inference as one undifferentiated block.",
                     "quick_check_question": "What changes once prefill ends and decode begins?",
-                    "related_section_ids": ["generation_mechanics"],
                 }
             ],
         )
@@ -197,7 +147,7 @@ def test_generate_concept_cards_from_reading_uses_reading_material_contract(monk
 
     payload = provider.generate_concept_cards_from_reading(
         week_spec=_week_spec(),
-        ledger_state=ProgressState(current_week=1, learning_assist_enabled=True),
+        ledger_state=ProgressState(current_week=1),
         reading_sections=[
             {
                 "id": "generation_mechanics",

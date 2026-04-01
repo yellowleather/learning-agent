@@ -9,7 +9,6 @@ from pydantic import BaseModel
 from learning_agent.errors import LearningAgentError
 from learning_agent.models import (
     AppConfig,
-    GateSession,
     GeneratedTask,
     Ledger,
     LearningSession,
@@ -30,10 +29,6 @@ class StateStore:
     @property
     def ledger_path(self) -> Path:
         return self.state_dir / "progress_ledger.json"
-
-    @property
-    def gate_path(self) -> Path:
-        return self.state_dir / "current_gate.json"
 
     @property
     def task_path(self) -> Path:
@@ -75,13 +70,6 @@ class StateStore:
         self.clear_ephemeral_state()
         return ledger
 
-    def load_gate(self) -> GateSession:
-        return self._load_model(self.gate_path, GateSession)
-
-    def save_gate(self, gate_session: GateSession) -> None:
-        self.ensure_state_dir()
-        self._write_json(self.gate_path, gate_session.model_dump(mode="json"))
-
     def load_task(self) -> TaskSession:
         return self._load_model(self.task_path, TaskSession)
 
@@ -102,7 +90,7 @@ class StateStore:
         self.save_task(task_session)
 
     def clear_ephemeral_state(self) -> None:
-        for path in (self.gate_path, self.task_path, self.learning_path):
+        for path in (self.task_path, self.learning_path):
             if path.exists():
                 path.unlink()
 

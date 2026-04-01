@@ -24,7 +24,7 @@ class CurriculumMetadata(StrictModel):
 
 
 class Gates(StrictModel):
-    socratic_check_passed: bool = False
+    learning_check_passed: bool = False
     implementation_complete: bool = False
     verification_passed: bool = False
     evidence_reliable: bool = False
@@ -74,25 +74,13 @@ class ConceptCard(StrictModel):
     quick_check_question: Optional[str] = None
     image_path: Optional[str] = None
     image_alt: str = ""
-    related_section_ids: List[str] = Field(default_factory=list)
-
-
-class RawLearningQuestion(StrictModel):
-    prompt_text: str
-    tier: Literal["foundational_concepts", "implementation_knowledge", "optimization_and_production_insights"]
-    topic_area: str
 
 
 class LearningQuestion(StrictModel):
     id: str
-    type: Literal["concept", "implementation", "evidence_based"]
-    scope: Literal["core", "adjacent", "later_week"]
     depth: Literal["baseline", "deep", "stretch"]
     prompt_text: str
     scoring_rubric: List[str] = Field(default_factory=list)
-    roadmap_anchor: Dict[str, Any] = Field(default_factory=dict)
-    observation_required: bool = False
-    related_concept_ids: List[str] = Field(default_factory=list)
 
 
 class QuestionScore(StrictModel):
@@ -113,17 +101,7 @@ class LearningAssistPayload(StrictModel):
     questions: List[LearningQuestion] = Field(default_factory=list)
 
 
-class RawQuestionBankPayload(StrictModel):
-    week: int
-    questions: List[RawLearningQuestion] = Field(default_factory=list)
-
-
-class ClassifiedQuestionBankPayload(StrictModel):
-    week: int
-    questions: List[LearningQuestion] = Field(default_factory=list)
-
-
-class EvidenceQuestionPayload(StrictModel):
+class LearningQuestionBankPayload(StrictModel):
     week: int
     questions: List[LearningQuestion] = Field(default_factory=list)
 
@@ -141,7 +119,6 @@ class ReadingSection(StrictModel):
     title: str
     body_markdown: str
     figure_ids: List[str] = Field(default_factory=list)
-    related_concept_ids: List[str] = Field(default_factory=list)
 
 
 class ReadingMaterialPayload(StrictModel):
@@ -188,7 +165,6 @@ class CheckpointState(StrictModel):
 class ProgressState(StrictModel):
     current_week: int
     active_functional_dirs: List[str] = Field(default_factory=list)
-    learning_assist_enabled: bool = True
     gates: Gates = Field(default_factory=Gates)
     artifacts: ArtifactState = Field(default_factory=ArtifactState)
     metrics: MetricsState = Field(default_factory=MetricsState)
@@ -212,25 +188,6 @@ class WeekSpec(StrictModel):
     required_files: List[str] = Field(default_factory=list)
     active_dirs: List[str] = Field(default_factory=list)
     required_metrics: List[str] = Field(default_factory=list)
-
-
-class GateQuestion(StrictModel):
-    week: int
-    question: str
-    rubric: List[str] = Field(default_factory=list)
-    context_summary: str
-
-
-class GateResult(StrictModel):
-    passed: bool
-    score_rationale: str
-    missing_concepts: List[str] = Field(default_factory=list)
-
-
-class GateSession(StrictModel):
-    prompt: GateQuestion
-    last_answer: Optional[str] = None
-    result: Optional[GateResult] = None
 
 
 class GeneratedTask(StrictModel):

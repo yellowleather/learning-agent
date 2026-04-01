@@ -185,19 +185,6 @@ def run_action(action: str, form: Dict[str, list[str]]) -> str:
     if action == "init":
         ledger = controller.initialize()
         return f"Initialized Week {ledger.state.current_week}."
-    if action == "gate_ask":
-        session = controller.ask_gate()
-        return f"Generated concept gate for Week {session.prompt.week}."
-    if action == "gate_submit":
-        answer = first_param(form, "answer")
-        if not answer.strip():
-            raise LearningAgentError("Gate answer cannot be empty.")
-        result = controller.submit_gate(answer)
-        return "Gate passed." if result_passed(result) else "Gate failed."
-    if action == "learning_toggle":
-        enabled = first_param(form, "learning_enabled", default="true") == "true"
-        controller.set_learning_assist_enabled(enabled)
-        return f"Learning Assist {'enabled' if enabled else 'hidden'}."
     if action == "learning_generate":
         session = controller.generate_learning_assist()
         return f"Generated Learning Assist for Week {session.week}."
@@ -889,6 +876,16 @@ def render_page(
     .subpanel h3 {{
       margin-bottom: 10px;
       font-size: 1rem;
+    }}
+    .learn-reading-section-v3 {{
+      padding: 0;
+      border-radius: 0;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+    }}
+    .learn-reading-section-v3 + .learn-reading-section-v3 {{
+      margin-top: 18px;
     }}
     .stack {{
       display: grid;
@@ -2727,7 +2724,7 @@ def render_page(
     .activity-dot-v3.good {{ background: #2bb99d; }}
     .activity-dot-v3.warn {{ background: #f0ad4e; }}
     .activity-dot-v3.bad {{ background: #d86565; }}
-    .scope-title-v3 {{
+    .week-title-v3 {{
       font-size: 1.02rem;
       font-weight: 700;
       line-height: 1.25;
@@ -4595,7 +4592,7 @@ def render_info_sections(initialized: bool) -> str:
     return """
     <article class="panel" style="padding: 18px 20px;">
       <h2>Quick Start</h2>
-      <p class="muted">Initialize Week 1 to load the scope, unlock the guided workflow, and turn the workspace into a live engineering project.</p>
+      <p class="muted">Initialize Week 1 to load the current week, unlock the guided workflow, and turn the workspace into a live engineering project.</p>
     </article>
     """
 
@@ -4617,7 +4614,7 @@ def render_body(status: Optional[dict], initialized: bool, selected_question_id:
                   <strong>Guidance</strong>
                   <ul>
                     <li>Create the local ledger and load Week 1 from the roadmap.</li>
-                    <li>Unlock the scope, progress, deliverables, and assistant rails.</li>
+                    <li>Unlock the week, progress, deliverables, and assistant rails.</li>
                     <li>Start with concept practice before implementation work appears.</li>
                   </ul>
                 </div>
@@ -4748,11 +4745,11 @@ def render_learning_assessment_v3(status: dict, learning_session: dict, selected
       <section class="learn-workspace learning-stage-shell">
         <div class="reading-column">
           <div class="reading-column-scroll" data-reading-scroll>
-            <article class="subpanel stage-surface">
+            <article class="subpanel stage-surface learn-reading-section-v3">
               <h3>Concept Cards</h3>
               <div class="concept-card-grid">{cards_html}</div>
             </article>
-            <article class="subpanel stage-surface">
+            <article class="subpanel stage-surface learn-reading-section-v3">
               <h3>Reading Material</h3>
               <div class="reading-stack">{sections_html}</div>
             </article>
@@ -5098,13 +5095,12 @@ def render_progression_shell(status: dict, current_step: str) -> str:
 def render_active_stage(
     status: dict,
     learning_session: Optional[dict],
-    gate_session: Optional[dict],
     task_session: Optional[dict],
     current_step: str,
     selected_question_id: Optional[str],
 ) -> str:
     if current_step == "learn":
-        return render_learning_stage(status, learning_session, gate_session, selected_question_id)
+        return render_learning_stage(status, learning_session, selected_question_id)
     if current_step == "build":
         return render_build_stage(status, task_session)
     if current_step == "verify":
@@ -5115,7 +5111,6 @@ def render_active_stage(
 def render_learning_stage(
     status: dict,
     learning_session: Optional[dict],
-    gate_session: Optional[dict],
     selected_question_id: Optional[str],
 ) -> str:
     progress = status.get("question_progress", {})
@@ -5140,9 +5135,6 @@ def render_learning_stage(
       </article>
     """
     question_modal_html = render_question_list_modal(questions, attempts, selected_question["id"] if selected_question else None)
-    legacy_gate = (
-        f"<p class='fine-print'>Legacy gate loaded: {escape(gate_session['prompt']['question'])}</p>" if gate_session else ""
-    )
     return f"""
     <section id="stage-learn" class="stage-card workflow-stage-card">
       <div class="stage-header">
@@ -5175,21 +5167,13 @@ def render_learning_stage(
         </div>
       </section>
       {question_modal_html}
-      <details class="details-block stage-advanced">
-        <summary>Advanced</summary>
-        <div class="action-grid" style="margin-top: 14px;">
-          {render_button_panel('Ask Legacy Gate', 'Generate the older single-question concept gate if you still want it.', 'gate_ask', 'Ask Gate', secondary=True)}
-          {render_gate_submit_panel()}
-        </div>
-        {legacy_gate}
-      </details>
     </section>
     """
 
 
 def render_build_stage(status: dict, task_session: Optional[dict]) -> str:
     if not task_session:
-        task_body = "<p class='muted'>No task generated yet. Pass the learning gate first, then generate the scoped implementation brief.</p>"
+        task_body = "<p class='muted'>No task generated yet. Pass the learning check first, then generate the scoped implementation brief.</p>"
     else:
         task = task_session["task"]
         task_body = (
@@ -5218,11 +5202,11 @@ def render_build_stage(status: dict, task_session: Optional[dict]) -> str:
         {render_status_badge(step_status(status, 'build'))}
       </div>
       <div class="stage-intro">
-        <p><strong>Implementation scope:</strong> build only inside the current week's allowed directories and required files.</p>
+        <p><strong>Implementation boundaries:</strong> build only inside the current week's allowed directories and required files.</p>
         <p class="muted">Generate the task once concept coverage passes. After working in the target repo, sync artifacts to update completion progress.</p>
       </div>
       <div class="action-grid">
-        {render_button_panel('Generate Task', 'Create the structured Junior SWE task once the gate passes.', 'task_generate', 'Generate Task', disabled=not status.get('can_generate_task'))}
+        {render_button_panel('Generate Task', 'Create the structured Junior SWE task once the learning check passes.', 'task_generate', 'Generate Task', disabled=not status.get('can_generate_task'))}
         {render_button_panel('Sync Artifacts', 'Scan the target repo for the required files.', 'record_sync', 'Sync Files', secondary=True)}
       </div>
       <article class="subpanel stage-surface">
@@ -5330,8 +5314,8 @@ def render_left_sidebar(status: Optional[dict], initialized: bool) -> str:
         return """
         <aside id="left-sidebar" class="workspace-sidebar-v3">
           <article class="panel sidebar-panel-minimal-v3">
-            <h2>Scope</h2>
-            <p class="scope-title-v3">Baseline Inference Server</p>
+            <h2>Current Week</h2>
+            <p class="week-title-v3">Baseline Inference Server</p>
             <p class="muted">Run a model locally and expose it as an API.</p>
           </article>
           <article class="panel progress-panel-v3 sidebar-panel-minimal-v3">
@@ -5362,8 +5346,8 @@ def render_left_sidebar(status: Optional[dict], initialized: bool) -> str:
     return f"""
     <aside id="left-sidebar" class="workspace-sidebar-v3">
       <article class="panel sidebar-panel-minimal-v3">
-        <h2>Scope</h2>
-        <p class="scope-title-v3">{escape(status['title'])}</p>
+        <h2>Current Week</h2>
+        <p class="week-title-v3">{escape(status['title'])}</p>
         <p class="muted">{escape(status['goal'])}</p>
       </article>
       <article class="panel progress-panel-v3 sidebar-panel-minimal-v3">
@@ -5760,7 +5744,6 @@ def render_checkpoint_panel(status: dict) -> str:
 def render_learning_panel(
     status: dict,
     learning_session: Optional[dict],
-    gate_session: Optional[dict],
     current_step: str,
     selected_question_id: Optional[str],
 ) -> str:
@@ -5787,10 +5770,6 @@ def render_learning_panel(
       </article>
     """
     question_modal_html = render_question_list_modal(questions, attempts, selected_question["id"] if selected_question else None)
-
-    legacy_gate = (
-        f"<p class='fine-print'>Legacy gate loaded: {escape(gate_session['prompt']['question'])}</p>" if gate_session else ""
-    )
     return f"""
     <details id="step-learn" class="workflow-step {'current' if current_step == 'learn' else ''}" {'open' if current_step == 'learn' else ''}>
       <summary class="step-summary">
@@ -5805,18 +5784,18 @@ def render_learning_panel(
       </summary>
       <div class="step-body">
         <div class="step-intro">
-          <p><strong>Required coverage:</strong> {progress.get('required_passed', 0)}/{progress.get('required_total', 0)} baseline core questions passed.</p>
+          <p><strong>Required coverage:</strong> {progress.get('required_passed', 0)}/{progress.get('required_total', 0)} baseline questions passed.</p>
           <p class="muted">Keep the reading material and concept cards open on the left while you answer questions on the right.</p>
         </div>
         {orientation_html}
         <section class="learn-workspace">
           <div class="reading-column">
             <div class="reading-column-scroll" data-reading-scroll>
-              <article class="subpanel">
+              <article class="subpanel learn-reading-section-v3">
                 <h3>Concept Cards</h3>
                 <div class="concept-card-grid">{cards_html}</div>
               </article>
-              <article class="subpanel">
+              <article class="subpanel learn-reading-section-v3">
                 <h3>Reading Material</h3>
                 <div class="reading-stack">{sections_html}</div>
               </article>
@@ -5827,14 +5806,6 @@ def render_learning_panel(
           </div>
         </section>
         {question_modal_html}
-        <details class="details-block">
-          <summary>Advanced</summary>
-          <div class="action-grid" style="margin-top: 14px;">
-            {render_button_panel('Ask Legacy Gate', 'Generate the older single-question concept gate if you still want it.', 'gate_ask', 'Ask Gate', secondary=True)}
-            {render_gate_submit_panel()}
-          </div>
-          {legacy_gate}
-        </details>
       </div>
     </details>
     """
@@ -5909,10 +5880,6 @@ def render_learning_workspace(
     required_passed = int(progress.get("required_passed", 0))
     required_total = int(progress.get("required_total", 0))
     progress_percent = 0 if required_total == 0 else round((required_passed / required_total) * 100)
-    related_cards = "".join(
-        f"<a href='/?question_id={quote_plus(selected_question['id'])}#card-{escape(card_id)}'>{escape(humanize_section_label(card_id))}</a>"
-        for card_id in selected_question.get("related_concept_ids", [])
-    ) or "<span class='muted'>No linked concepts yet.</span>"
     rubric = render_items(selected_question.get("scoring_rubric", []))
     status = question_attempt_status(attempts, selected_question["id"])
     return f"""
@@ -5938,9 +5905,6 @@ def render_learning_workspace(
         <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="{required_total}" aria-valuenow="{required_passed}" aria-valuetext="{progress_percent}% complete">
           <div class="progress-fill" style="width: {progress_percent}%;"></div>
         </div>
-      </div>
-      <div class="question-links">
-        {related_cards}
       </div>
       <details class="rubric-inline">
         <summary>What A Good Answer Should Cover</summary>
@@ -6027,7 +5991,7 @@ def select_learning_question(questions: list[dict], selected_question_id: Option
 
 def render_task_panel(status: dict, task_session: Optional[dict], current_step: str) -> str:
     if not task_session:
-        task_body = "<p class='muted'>No task generated yet. Pass the learning gate first, then generate the scoped implementation brief.</p>"
+        task_body = "<p class='muted'>No task generated yet. Pass the learning check first, then generate the scoped implementation brief.</p>"
     else:
         task = task_session["task"]
         task_body = (
@@ -6059,11 +6023,11 @@ def render_task_panel(status: dict, task_session: Optional[dict], current_step: 
       </summary>
       <div class="step-body">
         <div class="step-intro">
-          <p><strong>Implementation scope:</strong> build only inside the current week's allowed directories and required files.</p>
+          <p><strong>Implementation boundaries:</strong> build only inside the current week's allowed directories and required files.</p>
           <p class="muted">Generate the task once concept coverage passes. After working in the target repo, sync artifacts to update completion progress.</p>
         </div>
         <div class="action-grid">
-          {render_button_panel('Generate Task', 'Create the structured Junior SWE task once the gate passes.', 'task_generate', 'Generate Task', disabled=not status.get('can_generate_task'))}
+          {render_button_panel('Generate Task', 'Create the structured Junior SWE task once the learning check passes.', 'task_generate', 'Generate Task', disabled=not status.get('can_generate_task'))}
           {render_button_panel('Sync Artifacts', 'Scan the target repo for the required files.', 'record_sync', 'Sync Files', secondary=True)}
         </div>
         <article class="subpanel">
@@ -6204,21 +6168,6 @@ def render_button_panel(
       <form method="post" action="/action" class="form-grid">
         <input type="hidden" name="action" value="{escape(action)}">
         <button type="submit" class="{button_class}"{disabled_attr}>{escape(button_label)}</button>
-      </form>
-    </article>
-    """
-
-
-def render_gate_submit_panel() -> str:
-    return """
-    <article class="subpanel">
-      <h3>Submit Gate Answer</h3>
-      <form method="post" action="/action" class="form-grid">
-        <input type="hidden" name="action" value="gate_submit">
-        <label>Answer
-          <textarea name="answer" placeholder="Explain your Week 1 concepts here..."></textarea>
-        </label>
-        <button type="submit">Submit Answer</button>
       </form>
     </article>
     """
@@ -6432,7 +6381,7 @@ def progression_summary(status: dict, step_id: str) -> str:
 
 def workflow_reason(status: dict, step_id: str) -> str:
     if step_id == "learn":
-        return checkpoint_reason(status, "core_concepts", "Pass the required questions to unlock Build.")
+        return checkpoint_reason(status, "learning_questions", "Pass the required questions to unlock Build.")
     if step_id == "build":
         completed = len(status["completed_files"])
         required = len(status["required_files"])
@@ -6469,7 +6418,7 @@ def checkpoint_reason(status: dict, checkpoint_id: str, fallback: str) -> str:
 def step_status(status: dict, step_id: str) -> str:
     gates = status["gates"]
     if step_id == "learn":
-        return checkpoint_status(status, "core_concepts")
+        return checkpoint_status(status, "learning_questions")
     if step_id == "build":
         if gates["implementation_complete"]:
             return "passed"

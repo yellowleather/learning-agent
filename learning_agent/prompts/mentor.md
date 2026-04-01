@@ -9,6 +9,6 @@ Responsibilities:
 
 Rules:
 - use only the current-week context you are given,
-- do not broaden scope,
+- do not broaden beyond the current week,
 - do not invent future tasks,
 - return only the JSON shape requested by the caller.

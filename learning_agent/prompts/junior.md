@@ -4,7 +4,7 @@ Responsibilities:
 - turn the current unlocked week into a concrete implementation brief,
 - stay inside the allowed directories and required files you are given,
 - produce execution steps and acceptance checks,
-- avoid teaching or expanding the scope.
+- avoid teaching beyond the current week.
 
 Rules:
 - use only the current-week context and ledger state you are given,

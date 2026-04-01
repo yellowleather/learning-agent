@@ -5,19 +5,13 @@ from collections.abc import Iterator
 from typing import Any
 
 from learning_agent.models import (
-    ClassifiedQuestionBankPayload,
     ConceptCardPayload,
-    EvidenceQuestionPayload,
-    GateQuestion,
-    GateResult,
     GeneratedTask,
     LearningQuestion,
-    LearningSession,
+    LearningQuestionBankPayload,
     ObservationRecord,
     ProgressState,
     QuestionScore,
-    RawQuestionBankPayload,
-    RawLearningQuestion,
     ReadingMaterialPayload,
     TopicChatTurn,
 )
@@ -25,16 +19,9 @@ from learning_agent.models import (
 
 class LLMProvider(ABC):
     @abstractmethod
-    def generate_raw_question_bank(self, week_spec: dict[str, Any], ledger_state: ProgressState) -> RawQuestionBankPayload:
-        raise NotImplementedError
-
-    @abstractmethod
-    def classify_question_bank(
-        self,
-        week_spec: dict[str, Any],
-        ledger_state: ProgressState,
-        questions: list[RawLearningQuestion],
-    ) -> ClassifiedQuestionBankPayload:
+    def generate_question_bank(
+        self, week_spec: dict[str, Any], ledger_state: ProgressState
+    ) -> LearningQuestionBankPayload:
         raise NotImplementedError
 
     @abstractmethod
@@ -56,14 +43,6 @@ class LLMProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def generate_gate_question(self, week_spec: dict[str, Any]) -> GateQuestion:
-        raise NotImplementedError
-
-    @abstractmethod
-    def score_gate_answer(self, week_spec: dict[str, Any], question: GateQuestion, answer: str) -> GateResult:
-        raise NotImplementedError
-
-    @abstractmethod
     def generate_task(self, week_spec: dict[str, Any], ledger_state: ProgressState) -> GeneratedTask:
         raise NotImplementedError
 
@@ -75,15 +54,6 @@ class LLMProvider(ABC):
         answer: str,
         observation: ObservationRecord | None,
     ) -> QuestionScore:
-        raise NotImplementedError
-
-    @abstractmethod
-    def generate_evidence_questions(
-        self,
-        week_spec: dict[str, Any],
-        observation: ObservationRecord,
-        learning_session: LearningSession,
-    ) -> EvidenceQuestionPayload:
         raise NotImplementedError
 
     @abstractmethod

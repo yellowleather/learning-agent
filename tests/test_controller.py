@@ -4,15 +4,11 @@ from pathlib import Path
 from learning_agent.config import load_config
 from learning_agent.controller import LearningController
 from learning_agent.models import (
-    ClassifiedQuestionBankPayload,
     ConceptCardPayload,
-    EvidenceQuestionPayload,
-    GateQuestion,
-    GateResult,
     GeneratedTask,
+    LearningQuestionBankPayload,
     ObservationRecord,
     QuestionScore,
-    RawQuestionBankPayload,
     ReadingMaterialPayload,
     ReflectionRecord,
 )
@@ -135,7 +131,6 @@ def _concept_cards_for(_reading_sections):
                 "why_it_matters": "This distinction explains why prompt length and output length stress the system differently.",
                 "common_mistake": "Treating all inference work as one undifferentiated block.",
                 "quick_check_question": "What changes once prefill ends and decode begins?",
-                "related_section_ids": ["generation_mechanics"],
             },
             {
                 "id": "token-generation",
@@ -145,7 +140,6 @@ def _concept_cards_for(_reading_sections):
                 "why_it_matters": "It helps the learner reason about user-visible behavior and performance.",
                 "common_mistake": "Talking about generation without distinguishing it from prompt processing.",
                 "quick_check_question": "What part of the system repeats for every next token?",
-                "related_section_ids": ["generation_mechanics"],
             },
             {
                 "id": "request-flow",
@@ -155,7 +149,6 @@ def _concept_cards_for(_reading_sections):
                 "why_it_matters": "It anchors system explanations in the serving path rather than isolated model facts.",
                 "common_mistake": "Explaining the model while skipping the server around it.",
                 "quick_check_question": "What are the major stages between request arrival and response delivery?",
-                "related_section_ids": ["request_to_response"],
             },
             {
                 "id": "api-serving",
@@ -165,7 +158,6 @@ def _concept_cards_for(_reading_sections):
                 "why_it_matters": "It ties the reading back to the actual service the learner will build.",
                 "common_mistake": "Treating serving as a thin wrapper instead of part of the design.",
                 "quick_check_question": "Why is model quality alone not enough for a usable inference service?",
-                "related_section_ids": ["request_to_response", "build_artifacts"],
             },
             {
                 "id": "implementation-boundaries",
@@ -175,7 +167,6 @@ def _concept_cards_for(_reading_sections):
                 "why_it_matters": "This keeps implementation grounded in responsibilities instead of disconnected tasks.",
                 "common_mistake": "Jumping into files without first understanding which system boundary each file owns.",
                 "quick_check_question": "How should the week’s files map onto the system responsibilities?",
-                "related_section_ids": ["build_artifacts"],
             },
             {
                 "id": "latency-metrics",
@@ -185,7 +176,6 @@ def _concept_cards_for(_reading_sections):
                 "why_it_matters": "They make performance discussions concrete and testable.",
                 "common_mistake": "Quoting latency without saying what part of the system it reflects.",
                 "quick_check_question": "What part of the request path could make latency rise?",
-                "related_section_ids": ["measure_and_verify"],
             },
             {
                 "id": "throughput-metrics",
@@ -195,7 +185,6 @@ def _concept_cards_for(_reading_sections):
                 "why_it_matters": "They clarify efficiency, not just correctness.",
                 "common_mistake": "Treating throughput as interchangeable with latency.",
                 "quick_check_question": "What does tokens per second tell you that latency alone does not?",
-                "related_section_ids": ["measure_and_verify"],
             },
             {
                 "id": "benchmark-evidence",
@@ -205,124 +194,59 @@ def _concept_cards_for(_reading_sections):
                 "why_it_matters": "It connects measurement to disciplined engineering judgment.",
                 "common_mistake": "Reporting numbers without enough benchmark context to trust them.",
                 "quick_check_question": "What makes a benchmark result trustworthy instead of just plausible?",
-                "related_section_ids": ["measure_and_verify", "week_map"],
             },
         ],
     )
 
 
 class FakeProvider:
-    def generate_raw_question_bank(self, week_spec, ledger_state):
+    def generate_question_bank(self, week_spec, ledger_state):
         questions = [
             {
-                "prompt_text": "What is the difference between prefill and decode?",
-                "tier": "foundational_concepts",
-                "topic_area": "prefill_vs_decode",
-            }
-        ]
-        questions.extend(
-            {
-                "prompt_text": f"Concept deep question {index}",
-                "tier": "foundational_concepts",
-                "topic_area": "latency_metrics",
-            }
-            for index in range(2, 19)
-        )
-        questions.append(
-            {
-                "prompt_text": "How would you measure tokens per second?",
-                "tier": "implementation_knowledge",
-                "topic_area": "benchmarking",
-            }
-        )
-        questions.extend(
-            {
-                "prompt_text": f"Implementation deep question {index}",
-                "tier": "implementation_knowledge",
-                "topic_area": "api_serving",
-            }
-            for index in range(2, 21)
-        )
-        questions.extend(
-            {
-                "prompt_text": f"Optimization question {index}",
-                "tier": "optimization_and_production_insights",
-                "topic_area": "throughput_tradeoffs",
-            }
-            for index in range(1, 13)
-        )
-        return RawQuestionBankPayload(
-            week=week_spec["number"],
-            questions=questions,
-        )
-
-    def classify_question_bank(self, week_spec, ledger_state, questions):
-        classified_questions = [
-            {
-                "id": "core_prefill_decode",
-                "type": "concept",
-                "scope": "core",
+                "id": "prefill_decode_baseline",
                 "depth": "baseline",
                 "prompt_text": "What is the difference between prefill and decode?",
                 "scoring_rubric": ["Explain prompt processing.", "Explain iterative generation."],
-                "roadmap_anchor": {"week": week_spec["number"], "concept": "prefill_vs_decode"},
-                "observation_required": False,
             }
         ]
-        classified_questions.extend(
+        questions.append(
             {
-                "id": f"core_concept_deep_{index}",
-                "type": "concept",
-                "scope": "core",
+                "id": "baseline_metrics_reasoning",
+                "depth": "baseline",
+                "prompt_text": "How should you reason about tokens per second in relation to decode work?",
+                "scoring_rubric": ["Connect tokens per second to decode throughput.", "Explain what the metric hides."],
+            }
+        )
+        questions.extend(
+            {
+                "id": f"baseline_concept_{index}",
+                "depth": "baseline",
+                "prompt_text": f"Baseline concept question {index}",
+                "scoring_rubric": ["Explain the concept clearly."],
+            }
+            for index in range(3, 19)
+        )
+        questions.extend(
+            {
+                "id": f"concept_deep_{index}",
                 "depth": "deep",
                 "prompt_text": f"Concept deep question {index}",
-                "scoring_rubric": ["Explain the concept clearly."],
-                "roadmap_anchor": {"week": week_spec["number"], "topic": "latency_metrics"},
-                "observation_required": False,
+                "scoring_rubric": ["Explain the concept clearly.", "Include the key tradeoff."],
             }
-            for index in range(2, 19)
+            for index in range(1, 21)
         )
-        classified_questions.append(
+        questions.extend(
             {
-                "id": "impl_measure_tokens",
-                "type": "implementation",
-                "scope": "core",
-                "depth": "baseline",
-                "prompt_text": "How would you measure tokens per second?",
-                "scoring_rubric": ["Count generated tokens.", "Divide by decode time."],
-                "roadmap_anchor": {"week": week_spec["number"], "deliverable": "simple_server/benchmark.py"},
-                "observation_required": False,
-            }
-        )
-        classified_questions.extend(
-            {
-                "id": f"impl_deep_{index}",
-                "type": "implementation",
-                "scope": "core",
-                "depth": "deep",
-                "prompt_text": f"Implementation deep question {index}",
-                "scoring_rubric": ["Describe the implementation tradeoff."],
-                "roadmap_anchor": {"week": week_spec["number"], "deliverable": "simple_server/server.py"},
-                "observation_required": False,
-            }
-            for index in range(2, 21)
-        )
-        classified_questions.extend(
-            {
-                "id": f"adjacent_opt_{index}",
-                "type": "concept",
-                "scope": "adjacent",
-                "depth": "deep",
-                "prompt_text": f"Optimization question {index}",
-                "scoring_rubric": ["Discuss the tradeoff."],
-                "roadmap_anchor": {"week": week_spec["number"], "topic": "throughput_tradeoffs"},
-                "observation_required": False,
+                "id": f"stretch_tradeoff_{index}",
+                "depth": "stretch",
+                "prompt_text": f"Stretch tradeoff question {index}",
+                "scoring_rubric": ["Discuss the ceiling-level tradeoff."],
             }
             for index in range(1, 13)
         )
-        return ClassifiedQuestionBankPayload(
+        return LearningQuestionBankPayload(
             week=week_spec["number"],
-            questions=classified_questions,
+            questions=questions,
         )
 
     def generate_reading_material(self, week_spec, ledger_state, questions):
@@ -330,21 +254,6 @@ class FakeProvider:
 
     def generate_concept_cards_from_reading(self, week_spec, ledger_state, reading_sections):
         return _concept_cards_for(reading_sections)
-
-    def generate_gate_question(self, week_spec):
-        return GateQuestion(
-            week=week_spec["number"],
-            question="Explain prefill vs decode.",
-            rubric=["Explain the distinction.", "Mention why decode repeats."],
-            context_summary=week_spec["goal"],
-        )
-
-    def score_gate_answer(self, week_spec, question, answer):
-        return GateResult(
-            passed=True,
-            score_rationale="Answer covered the core distinction.",
-            missing_concepts=[],
-        )
 
     def generate_task(self, week_spec, ledger_state):
         return GeneratedTask(
@@ -364,23 +273,6 @@ class FakeProvider:
             passed=True,
             score_rationale=f"Answer covered {question.id}.",
             missing_concepts=[],
-        )
-
-    def generate_evidence_questions(self, week_spec, observation, learning_session):
-        return EvidenceQuestionPayload(
-            week=week_spec["number"],
-            questions=[
-                {
-                    "id": "evidence_latency",
-                    "type": "evidence_based",
-                    "scope": "core",
-                    "depth": "baseline",
-                    "prompt_text": "What does the latency pattern suggest?",
-                    "scoring_rubric": ["Tie the result to prefill cost."],
-                    "roadmap_anchor": {"week": week_spec["number"], "metric": "latency_p95"},
-                    "observation_required": True,
-                }
-            ],
         )
 
     def answer_topic_chat(self, week_spec, context, history, message):
@@ -576,17 +468,20 @@ def make_controller(tmp_path: Path, monkeypatch):
     return controller, target_repo
 
 
+def pass_required_learning_questions(controller: LearningController) -> None:
+    session = controller.generate_learning_assist()
+    for question in session.questions:
+        if question.depth == "baseline":
+            result = controller.answer_learning_question(question.id, f"Answer for {question.id}.")
+            assert result.passed is True
+
+
 def test_full_week_one_transition(monkeypatch, tmp_path):
     controller, target_repo = make_controller(tmp_path, monkeypatch)
     ledger = controller.initialize()
     assert ledger.state.current_week == 1
     assert ledger.state.active_functional_dirs == ["simple_server", "docs"]
-
-    gate = controller.ask_gate()
-    assert gate.prompt.week == 1
-
-    result = controller.submit_gate("Prefill processes the prompt once; decode generates next tokens iteratively.")
-    assert result.passed is True
+    pass_required_learning_questions(controller)
 
     task_session = controller.generate_task()
     assert task_session.task.required_files == [
@@ -636,7 +531,7 @@ def test_full_week_one_transition(monkeypatch, tmp_path):
 
     next_ledger = controller.advance_week()
     assert next_ledger.state.current_week == 2
-    assert next_ledger.state.gates.socratic_check_passed is False
+    assert next_ledger.state.gates.learning_check_passed is False
 
 
 def test_generate_task_requires_gate(monkeypatch, tmp_path):
@@ -646,9 +541,9 @@ def test_generate_task_requires_gate(monkeypatch, tmp_path):
     try:
         controller.generate_task()
     except Exception as exc:  # pragma: no cover - assertion below narrows the behavior.
-        assert "concept gate passes" in str(exc)
+        assert "learning check passes" in str(exc)
     else:  # pragma: no cover
-        raise AssertionError("Expected task generation to fail before the gate passes.")
+        raise AssertionError("Expected task generation to fail before the learning check passes.")
 
 
 def test_learning_assist_flow_records_evidence_and_reflection(monkeypatch, tmp_path):
@@ -663,18 +558,17 @@ def test_learning_assist_flow_records_evidence_and_reflection(monkeypatch, tmp_p
     assert session.concept_cards[0].image_path == "/assets/illustrations/prefill-decode.svg"
     assert session.reading_sections[0].title == "How This Week Works"
     assert "generation_mechanics" in [section.id for section in session.reading_sections]
-    assert session.concept_cards[0].related_section_ids
 
     bundle = controller.get_learning_bundle()
     assert bundle is not None
     assert bundle.figures
     assert bundle.reading_sections
-    assert bundle.questions[0].related_concept_ids
 
-    controller.answer_learning_question("core_prefill_decode", "Prefill processes the prompt once.")
-    result = controller.answer_learning_question("impl_measure_tokens", "Count tokens and divide by decode time.")
-    assert result.passed is True
-    assert controller.status()["gates"]["socratic_check_passed"] is True
+    baseline_questions = [question for question in session.questions if question.depth == "baseline"]
+    for question in baseline_questions:
+        result = controller.answer_learning_question(question.id, f"Answer for {question.id}.")
+        assert result.passed is True
+    assert controller.status()["gates"]["learning_check_passed"] is True
 
     controller.generate_task()
     (target_repo / "simple_server" / "server.py").write_text("print('ok')\n")
@@ -699,12 +593,6 @@ def test_learning_assist_flow_records_evidence_and_reflection(monkeypatch, tmp_p
     assert ledger.state.metrics.recorded["latency_p95"] == 840.0
     assert ledger.state.metrics.recorded["tokens_per_sec"] == 32.4
 
-    evidence_result = controller.answer_learning_question(
-        "evidence_latency",
-        "The latency increase is more consistent with prompt processing cost growing.",
-    )
-    assert evidence_result.passed is True
-
     ledger = controller.record_reflection(
         ReflectionRecord(
             text="The benchmark seems trustworthy after warm-up and repeated runs.",
@@ -716,7 +604,6 @@ def test_learning_assist_flow_records_evidence_and_reflection(monkeypatch, tmp_p
     assert ledger.state.reflection is not None
 
     status = controller.status()
-    assert status["question_progress"]["evidence_answered"] == 1
     assert not status["approval_blockers"]
 
     approved = controller.approve_week()
@@ -734,7 +621,7 @@ def test_answer_topic_chat_builds_learn_context(monkeypatch, tmp_path):
         message="How should I connect this to the benchmark task?",
         history=[{"role": "user", "content": "Remind me what matters most."}],
         current_step="learn",
-        selected_question_id="core_prefill_decode",
+        selected_question_id="prefill_decode_baseline",
     )
 
     assert result["week"] == 1
@@ -761,7 +648,7 @@ def test_stream_topic_chat_emits_events_and_context(monkeypatch, tmp_path):
             message="How should I connect this to the benchmark task?",
             history=[{"role": "user", "content": "Remind me what matters most."}],
             current_step="learn",
-            selected_question_id="core_prefill_decode",
+            selected_question_id="prefill_decode_baseline",
         )
     )
 

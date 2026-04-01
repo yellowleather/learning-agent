@@ -22,13 +22,11 @@ from learning_agent.ui import DEFAULT_UI_HOST, DEFAULT_UI_PORT, serve_ui
 
 
 app = typer.Typer(help="Guided single-controller learning agent.")
-gate_app = typer.Typer(help="Run the concept gate flow.")
 learn_app = typer.Typer(help="Run the Learning Assist flow.")
 task_app = typer.Typer(help="Generate the Junior SWE task.")
 record_app = typer.Typer(help="Record execution progress.")
 curriculum_app = typer.Typer(help="Generate standalone curriculum workspaces.")
 
-app.add_typer(gate_app, name="gate")
 app.add_typer(learn_app, name="learn")
 app.add_typer(task_app, name="task")
 app.add_typer(record_app, name="record")
@@ -188,18 +186,11 @@ def status_command() -> None:
         if status["recorded_metrics"]:
             typer.echo(f"Recorded metrics: {json.dumps(status['recorded_metrics'], sort_keys=True)}")
         typer.echo(f"Gates: {json.dumps(status['gates'], sort_keys=True)}")
-        typer.echo(f"Learning Assist: {'enabled' if status['learning_assist_enabled'] else 'hidden'}")
         progress = status["question_progress"]
         typer.echo(
             "Question coverage: "
             f"{progress['required_passed']}/{progress['required_total']} required questions passed"
         )
-        if status["evidence_required"]:
-            typer.echo(
-                "Evidence questions: "
-                f"{progress['evidence_answered']}/{progress['evidence_total']} answered"
-            )
-        typer.echo(f"Gate asked: {'yes' if status['gate_asked'] else 'no'}")
         typer.echo(f"Learning generated: {'yes' if status['learning_generated'] else 'no'}")
         typer.echo(f"Task generated: {'yes' if status['task_generated'] else 'no'}")
         if status["verification"]:
@@ -218,34 +209,6 @@ def status_command() -> None:
         exit_on_error(exc)
 
 
-@gate_app.command("ask")
-def gate_ask_command() -> None:
-    try:
-        controller = get_controller()
-        gate = controller.ask_gate()
-        typer.echo(f"Week {gate.prompt.week} concept gate")
-        typer.echo(gate.prompt.question)
-        if gate.prompt.rubric:
-            typer.echo("Rubric:")
-            for item in gate.prompt.rubric:
-                typer.echo(f"- {item}")
-    except LearningAgentError as exc:
-        exit_on_error(exc)
-
-
-@gate_app.command("submit")
-def gate_submit_command(answer: str = typer.Option(..., help="Your answer to the current gate question.")) -> None:
-    try:
-        controller = get_controller()
-        result = controller.submit_gate(answer)
-        typer.echo("Pass" if result.passed else "Fail")
-        typer.echo(result.score_rationale)
-        if result.missing_concepts:
-            typer.echo(f"Missing concepts: {', '.join(result.missing_concepts)}")
-    except LearningAgentError as exc:
-        exit_on_error(exc)
-
-
 @learn_app.command("generate")
 def learn_generate_command() -> None:
     try:
@@ -256,7 +219,7 @@ def learn_generate_command() -> None:
         typer.echo(f"Questions: {len(session.questions)}")
         for question in session.questions:
             typer.echo(
-                f"- {question.id} [{question.type}/{question.scope}/{question.depth}] "
+                f"- {question.id} [{question.depth}] "
                 f"{question.prompt_text}"
             )
     except LearningAgentError as exc:
@@ -275,19 +238,6 @@ def learn_answer_command(
         typer.echo(result.score_rationale)
         if result.missing_concepts:
             typer.echo(f"Missing concepts: {', '.join(result.missing_concepts)}")
-    except LearningAgentError as exc:
-        exit_on_error(exc)
-
-
-@learn_app.command("assist")
-def learn_assist_command(
-    enabled: bool = typer.Option(..., "--enabled/--disabled", help="Show or hide concept cards in the UI."),
-) -> None:
-    try:
-        controller = get_controller()
-        ledger = controller.set_learning_assist_enabled(enabled)
-        state = "enabled" if ledger.state.learning_assist_enabled else "disabled"
-        typer.echo(f"Learning Assist {state}.")
     except LearningAgentError as exc:
         exit_on_error(exc)
 

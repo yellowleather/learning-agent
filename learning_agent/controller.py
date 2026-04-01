@@ -10,22 +10,18 @@ from learning_agent.config import resolve_repo_path
 from learning_agent.errors import LearningAgentError
 from learning_agent.models import (
     AppConfig,
-    ClassifiedQuestionBankPayload,
     CheckpointState,
-    ConceptCardPayload,
     ConceptCard,
+    ConceptCardPayload,
     CurriculumMetadata,
-    EvidenceQuestionPayload,
     FigureAsset,
-    GateSession,
     Ledger,
     LearningBundle,
     LearningQuestion,
+    LearningQuestionBankPayload,
     LearningSession,
     ObservationRecord,
     QuestionAttempt,
-    RawQuestionBankPayload,
-    RawLearningQuestion,
     ReadingMaterialPayload,
     ReadingSection,
     ReflectionRecord,
@@ -56,10 +52,8 @@ class LearningController:
         ledger = self.state.load_ledger()
         week_spec = self._load_current_week(ledger)
         blockers = self._approval_blockers(ledger)
-        gate_exists = self.state.gate_path.exists()
         task_exists = self.state.task_path.exists()
         learning_exists = self.state.learning_path.exists()
-        gate_session = self.get_gate_session()
         task_session = self.get_task_session()
         learning_session = self.get_learning_session()
         checkpoints = self._build_checkpoints(ledger, learning_session)
@@ -69,13 +63,11 @@ class LearningController:
             "title": str(week_spec["short_title"]),
             "goal": str(week_spec["goal"]),
             "active_dirs": ledger.state.active_functional_dirs,
-            "learning_assist_enabled": ledger.state.learning_assist_enabled,
             "required_files": ledger.state.artifacts.required_files,
             "completed_files": ledger.state.artifacts.completed_files,
             "required_metrics": ledger.state.metrics.required,
             "recorded_metrics": ledger.state.metrics.recorded,
             "gates": ledger.state.gates.model_dump(mode="json"),
-            "gate_asked": gate_exists,
             "task_generated": task_exists,
             "learning_generated": learning_exists,
             "verification": ledger.state.verification.model_dump(mode="json") if ledger.state.verification else None,
@@ -84,66 +76,29 @@ class LearningController:
             "evidence_required": self._requires_evidence(ledger),
             "checkpoints": [checkpoint.model_dump(mode="json") for checkpoint in checkpoints],
             "question_progress": self._question_progress(learning_session),
-            "can_generate_task": ledger.state.gates.socratic_check_passed,
+            "can_generate_task": ledger.state.gates.learning_check_passed,
             "can_approve": not blockers,
             "approval_blockers": blockers,
-            "gate_session": gate_session.model_dump(mode="json") if gate_session else None,
             "task_session": task_session.model_dump(mode="json") if task_session else None,
             "learning_session": learning_session.model_dump(mode="json") if learning_session else None,
         }
-
-    def ask_gate(self):
-        ledger = self.state.load_ledger()
-        week_spec = self._load_current_week(ledger)
-        provider = self._provider()
-        question = provider.generate_gate_question(week_spec)
-        session = GateSession(prompt=question)
-        self.state.save_gate(session)
-        return session
-
-    def submit_gate(self, answer: str):
-        ledger = self.state.load_ledger()
-        week_spec = self._load_current_week(ledger)
-        gate_session = self.state.load_gate()
-        provider = self._provider()
-        result = provider.score_gate_answer(week_spec, gate_session.prompt, answer)
-        gate_session.last_answer = answer
-        gate_session.result = result
-        self.state.save_gate(gate_session)
-        ledger.state.gates.socratic_check_passed = result.passed
-        self.state.save_ledger(ledger)
-        return result
-
-    def set_learning_assist_enabled(self, enabled: bool) -> Ledger:
-        ledger = self.state.load_ledger()
-        ledger.state.learning_assist_enabled = enabled
-        self.state.save_ledger(ledger)
-        return ledger
 
     def generate_learning_assist(self) -> LearningSession:
         ledger = self.state.load_ledger()
         week_spec = self._load_current_week(ledger)
         provider = self._provider()
-        raw_payload = provider.generate_raw_question_bank(week_spec, ledger.state)
-        if not isinstance(raw_payload, RawQuestionBankPayload):
-            raw_payload = RawQuestionBankPayload.model_validate(raw_payload)
-        raw_questions = self._dedupe_raw_questions(raw_payload.questions)
-        raw_errors = self._validate_raw_questions(raw_questions)
-        if raw_errors:
-            raise LearningAgentError("Learning Assist raw question bank failed validation: " + "; ".join(raw_errors))
-        classified_payload = provider.classify_question_bank(week_spec, ledger.state, raw_questions)
-        if not isinstance(classified_payload, ClassifiedQuestionBankPayload):
-            classified_payload = ClassifiedQuestionBankPayload.model_validate(classified_payload)
-        question_errors = self._validate_classified_questions(classified_payload.questions, expected_count=len(raw_questions))
+        question_payload = provider.generate_question_bank(week_spec, ledger.state)
+        if not isinstance(question_payload, LearningQuestionBankPayload):
+            question_payload = LearningQuestionBankPayload.model_validate(question_payload)
+        questions = question_payload.questions
+        question_errors = self._validate_questions(questions)
         if question_errors:
-            raise LearningAgentError(
-                "Learning Assist classified question bank failed validation: " + "; ".join(question_errors)
-            )
-        reading_payload = provider.generate_reading_material(week_spec, ledger.state, classified_payload.questions)
+            raise LearningAgentError("Learning Assist question bank failed validation: " + "; ".join(question_errors))
+        reading_payload = provider.generate_reading_material(week_spec, ledger.state, questions)
         if not isinstance(reading_payload, ReadingMaterialPayload):
             reading_payload = ReadingMaterialPayload.model_validate(reading_payload)
-        reading_sections = self._normalize_reading_sections(classified_payload.questions, reading_payload.reading_sections)
-        reading_errors = self._validate_reading_sections(classified_payload.questions, reading_sections)
+        reading_sections = self._normalize_reading_sections(questions, reading_payload.reading_sections)
+        reading_errors = self._validate_reading_sections(questions, reading_sections)
         if reading_errors:
             raise LearningAgentError("Learning Assist reading generation failed validation: " + "; ".join(reading_errors))
         concept_payload = provider.generate_concept_cards_from_reading(week_spec, ledger.state, reading_sections)
@@ -153,10 +108,8 @@ class LearningController:
         concept_errors = self._validate_concept_cards(reading_sections, concept_cards)
         if concept_errors:
             raise LearningAgentError("Learning Assist concept-card generation failed validation: " + "; ".join(concept_errors))
-        reading_sections = self._link_reading_sections_to_concepts(reading_sections, concept_cards)
-        figures = self._build_figure_assets(week_spec, concept_cards, classified_payload.questions)
+        figures = self._build_figure_assets(week_spec, concept_cards, questions)
         concept_cards = self._decorate_concept_cards(concept_cards)
-        questions = self._link_questions_to_content(classified_payload.questions, concept_cards, reading_sections)
         session = LearningSession(
             week=int(week_spec["number"]),
             concept_cards=concept_cards,
@@ -173,8 +126,6 @@ class LearningController:
         ledger = self.state.load_ledger()
         session = self.state.load_learning()
         question = self._question_by_id(session, question_id)
-        if question.observation_required and not self._observation_ready_for_questions(ledger):
-            raise LearningAgentError("This question requires a valid observation before it can be answered.")
         week_spec = self._load_current_week(ledger)
         provider = self._provider()
         result = provider.score_learning_question(week_spec, question, answer, ledger.state.observation)
@@ -186,8 +137,8 @@ class LearningController:
 
     def generate_task(self):
         ledger = self.state.load_ledger()
-        if not ledger.state.gates.socratic_check_passed:
-            raise LearningAgentError("Cannot generate a task before the concept gate passes.")
+        if not ledger.state.gates.learning_check_passed:
+            raise LearningAgentError("Cannot generate a task before the learning check passes.")
         week_spec = self._load_current_week(ledger)
         provider = self._provider()
         task = provider.generate_task(week_spec, ledger.state)
@@ -221,18 +172,6 @@ class LearningController:
         if observation.tokens_per_sec is not None:
             ledger.state.metrics.recorded["tokens_per_sec"] = observation.tokens_per_sec
         ledger.state.gates.evidence_reliable = observation.reliability == "valid"
-        if self.state.learning_path.exists() and observation.reliability == "valid":
-            session = self.state.load_learning()
-            if not any(question.type == "evidence_based" for question in session.questions):
-                week_spec = self._load_current_week(ledger)
-                provider = self._provider()
-                payload = provider.generate_evidence_questions(week_spec, observation, session)
-                if not isinstance(payload, EvidenceQuestionPayload):
-                    payload = EvidenceQuestionPayload.model_validate(payload)
-                session.questions.extend(
-                    self._link_questions_to_content(payload.questions, session.concept_cards, session.reading_sections)
-                )
-                self.state.save_learning(session)
         self.state.save_ledger(ledger)
         return ledger
 
@@ -277,7 +216,6 @@ class LearningController:
             state={
                 "current_week": int(next_week["number"]),
                 "active_functional_dirs": list(next_week["active_dirs"]),
-                "learning_assist_enabled": ledger.state.learning_assist_enabled,
                 "artifacts": {
                     "required_files": list(next_week["required_files"]),
                     "completed_files": [],
@@ -291,11 +229,6 @@ class LearningController:
         self.state.save_ledger(ledger)
         self.state.clear_ephemeral_state()
         return ledger
-
-    def get_gate_session(self):
-        if not self.state.gate_path.exists():
-            return None
-        return self.state.load_gate()
 
     def get_task_session(self):
         if not self.state.task_path.exists():
@@ -555,7 +488,6 @@ class LearningController:
                         "title": title,
                         "body_markdown": section.body_markdown.strip(),
                         "figure_ids": [],
-                        "related_concept_ids": [],
                     }
                 )
             )
@@ -582,8 +514,6 @@ class LearningController:
         reading_sections: list[ReadingSection],
         concept_cards: list[ConceptCard],
     ) -> list[ConceptCard]:
-        known_section_ids = {section.id for section in reading_sections}
-        ordered_section_ids = [section.id for section in reading_sections]
         normalized_cards: list[ConceptCard] = []
         used_ids: set[str] = set()
         for index, card in enumerate(concept_cards, start=1):
@@ -596,7 +526,6 @@ class LearningController:
                     suffix += 1
                 card_id = f"{card_id}-{suffix}"
             used_ids.add(card_id)
-            related_section_ids = [section_id for section_id in card.related_section_ids if section_id in known_section_ids]
             normalized_cards.append(
                 card.model_copy(
                     update={
@@ -607,57 +536,10 @@ class LearningController:
                         "why_it_matters": card.why_it_matters.strip(),
                         "common_mistake": card.common_mistake.strip(),
                         "quick_check_question": (card.quick_check_question or "").strip() or None,
-                        "related_section_ids": related_section_ids,
                     }
                 )
             )
-        if normalized_cards:
-            covered_section_ids = {
-                section_id
-                for card in normalized_cards
-                for section_id in card.related_section_ids
-                if section_id in known_section_ids
-            }
-            missing_section_ids = [section_id for section_id in ordered_section_ids if section_id not in covered_section_ids]
-            if missing_section_ids:
-                first_card = normalized_cards[0]
-                related_section_ids = list(dict.fromkeys(first_card.related_section_ids + missing_section_ids))
-                normalized_cards[0] = first_card.model_copy(update={"related_section_ids": related_section_ids})
         return normalized_cards
-
-    def _link_reading_sections_to_concepts(
-        self,
-        sections: list[ReadingSection],
-        concept_cards: list,
-    ) -> list[ReadingSection]:
-        linked_sections: list[ReadingSection] = []
-        for section in sections:
-            related_concept_ids = [
-                card.id
-                for card in concept_cards
-                if section.id in getattr(card, "related_section_ids", [])
-            ]
-            linked_sections.append(section.model_copy(update={"related_concept_ids": related_concept_ids}))
-        return linked_sections
-
-    def _link_questions_to_content(
-        self,
-        questions: list[LearningQuestion],
-        concept_cards: list,
-        reading_sections: list[ReadingSection],
-    ) -> list[LearningQuestion]:
-        linked_questions: list[LearningQuestion] = []
-        for question in questions:
-            related_concept_ids = self._best_concept_ids_for_question(question, concept_cards)
-
-            linked_questions.append(
-                question.model_copy(
-                    update={
-                        "related_concept_ids": related_concept_ids,
-                    }
-                )
-            )
-        return linked_questions
 
     def _figure_asset_for_key(self, key: str) -> FigureAsset:
         library = {
@@ -755,8 +637,7 @@ class LearningController:
             "Approval blockers: " + (", ".join(blockers) or "(none)"),
             (
                 "Learning progress: "
-                f"{progress['required_passed']}/{progress['required_total']} baseline questions passed; "
-                f"{progress['evidence_answered']}/{progress['evidence_total']} evidence questions answered"
+                f"{progress['required_passed']}/{progress['required_total']} baseline questions passed"
             ),
         ]
 
@@ -792,16 +673,10 @@ class LearningController:
 
         return context_label, "\n".join(lines)
 
-    def _match_tokens(self, text: str) -> set[str]:
-        tokens = {token for token in re.split(r"[^a-z0-9]+", text.lower()) if len(token) >= 4}
-        if "tps" in text.lower():
-            tokens.add("tokens")
-        return tokens
-
     def _approval_blockers(self, ledger: Ledger) -> list[str]:
         blockers = []
-        if not ledger.state.gates.socratic_check_passed:
-            blockers.append("concept gate not passed")
+        if not ledger.state.gates.learning_check_passed:
+            blockers.append("learning check not passed")
         if not ledger.state.gates.implementation_complete:
             blockers.append("required files are incomplete")
         if not ledger.state.gates.verification_passed:
@@ -822,97 +697,34 @@ class LearningController:
 
     def _sync_learning_progress(self, ledger: Ledger, session: LearningSession) -> None:
         if self._required_question_ids(session) and self._required_questions_passed(session):
-            ledger.state.gates.socratic_check_passed = True
+            ledger.state.gates.learning_check_passed = True
 
-    def _dedupe_raw_questions(self, questions: list[RawLearningQuestion]) -> list[RawLearningQuestion]:
-        deduped: list[RawLearningQuestion] = []
-        seen: set[str] = set()
-        for question in questions:
-            normalized = " ".join(question.prompt_text.lower().split())
-            if not normalized or normalized in seen:
-                continue
-            seen.add(normalized)
-            deduped.append(question)
-        return deduped
-
-    def _validate_raw_questions(self, questions: list[RawLearningQuestion]) -> list[str]:
+    def _validate_questions(self, questions: list[LearningQuestion]) -> list[str]:
         errors: list[str] = []
         if len(questions) < 50:
-            errors.append(f"expected at least 50 deduped raw questions but received {len(questions)}")
-
-        tier_counts = {
-            "foundational_concepts": 0,
-            "implementation_knowledge": 0,
-            "optimization_and_production_insights": 0,
-        }
-        for question in questions:
-            if not question.prompt_text.strip():
-                errors.append("raw question bank contains an empty question prompt")
-            tier_counts[question.tier] = tier_counts.get(question.tier, 0) + 1
-            prompt_lower = question.prompt_text.lower()
-            if "week 2" in prompt_lower or "week 3" in prompt_lower or "next week" in prompt_lower:
-                errors.append(f"raw question appears to leak future scope: {question.prompt_text}")
-
-        if tier_counts["foundational_concepts"] < 18:
-            errors.append(
-                "raw question bank does not contain enough foundational questions after dedupe"
-            )
-        if tier_counts["implementation_knowledge"] < 20:
-            errors.append(
-                "raw question bank does not contain enough implementation questions after dedupe"
-            )
-        if tier_counts["optimization_and_production_insights"] < 12:
-            errors.append(
-                "raw question bank does not contain enough optimization questions after dedupe"
-            )
-        return errors
-
-    def _validate_classified_questions(
-        self, questions: list[LearningQuestion], expected_count: int
-    ) -> list[str]:
-        errors: list[str] = []
-        if len(questions) != expected_count:
-            errors.append(
-                f"classified question count {len(questions)} does not match deduped raw question count {expected_count}"
-            )
-        if len(questions) < 50:
-            errors.append(f"expected at least 50 classified questions but received {len(questions)}")
+            errors.append(f"expected at least 50 questions but received {len(questions)}")
 
         ids = [question.id for question in questions]
         if len(set(ids)) != len(ids):
-            errors.append("classified question ids must be unique")
+            errors.append("question ids must be unique")
 
-        evidence_questions = [question.id for question in questions if question.type == "evidence_based"]
-        if evidence_questions:
-            errors.append("initial classified question bank must not include evidence-based questions")
+        depth_counts = {"baseline": 0, "deep": 0, "stretch": 0}
+        for question in questions:
+            if not question.prompt_text.strip():
+                errors.append("question bank contains an empty question prompt")
+            if not question.scoring_rubric:
+                errors.append(f"question {question.id!r} is missing a scoring rubric")
+            depth_counts[question.depth] = depth_counts.get(question.depth, 0) + 1
+            prompt_lower = question.prompt_text.lower()
+            if "week 2" in prompt_lower or "week 3" in prompt_lower or "next week" in prompt_lower:
+                errors.append(f"question appears to leak future-week material: {question.prompt_text}")
 
-        observation_required = [question.id for question in questions if question.observation_required]
-        if observation_required:
-            errors.append("initial classified question bank must set observation_required=false for all questions")
-
-        tier1 = [
-            question
-            for question in questions
-            if question.type == "concept" and question.scope == "core" and question.depth in {"baseline", "deep"}
-        ]
-        tier2 = [
-            question
-            for question in questions
-            if question.type == "implementation"
-            and question.scope == "core"
-            and question.depth in {"baseline", "deep"}
-        ]
-        tier3 = [
-            question
-            for question in questions
-            if question.scope == "adjacent" and question.depth in {"deep", "stretch"}
-        ]
-        if len(tier1) < 18:
-            errors.append(f"expected at least 18 classified Tier 1 questions but received {len(tier1)}")
-        if len(tier2) < 20:
-            errors.append(f"expected at least 20 classified Tier 2 questions but received {len(tier2)}")
-        if len(tier3) < 12:
-            errors.append(f"expected at least 12 classified Tier 3 questions but received {len(tier3)}")
+        if depth_counts["baseline"] < 18:
+            errors.append("question bank does not contain enough baseline questions")
+        if depth_counts["deep"] < 20:
+            errors.append("question bank does not contain enough deep questions")
+        if depth_counts["stretch"] < 12:
+            errors.append("question bank does not contain enough stretch questions")
 
         return errors
 
@@ -970,7 +782,6 @@ class LearningController:
         if not concept_cards:
             return errors
 
-        known_section_ids = {section.id for section in reading_sections}
         ids = [card.id for card in concept_cards]
         if len(set(ids)) != len(ids):
             errors.append("concept card ids must be unique")
@@ -983,7 +794,6 @@ class LearningController:
             r"\bui\b",
         ]
 
-        linked_section_ids: set[str] = set()
         for card in concept_cards:
             if not card.title.strip():
                 errors.append(f"concept card {card.id!r} has an empty title")
@@ -993,14 +803,6 @@ class LearningController:
                 errors.append(f"concept card {card.id!r} has an empty why_it_matters")
             if not card.common_mistake.strip():
                 errors.append(f"concept card {card.id!r} has an empty common_mistake")
-            if not card.related_section_ids:
-                errors.append(f"concept card {card.id!r} is not linked to any reading blocks")
-            invalid_section_ids = [section_id for section_id in card.related_section_ids if section_id not in known_section_ids]
-            if invalid_section_ids:
-                errors.append(
-                    f"concept card {card.id!r} references unknown reading blocks: {', '.join(sorted(invalid_section_ids))}"
-                )
-            linked_section_ids.update(section_id for section_id in card.related_section_ids if section_id in known_section_ids)
             text = " ".join(
                 part
                 for part in (
@@ -1017,79 +819,13 @@ class LearningController:
                     errors.append(f"concept card {card.id!r} uses internal product language: {pattern}")
                     break
 
-        if linked_section_ids != known_section_ids:
-            missing_links = sorted(known_section_ids - linked_section_ids)
-            if missing_links:
-                errors.append("concept cards do not cover all reading blocks: " + ", ".join(missing_links))
-
         return errors
-
-    def _best_reading_section_id_for_question(
-        self,
-        question: LearningQuestion,
-        reading_sections: list[ReadingSection],
-    ) -> str:
-        best_section_id = reading_sections[0].id
-        best_score = -1
-        for reading_section in reading_sections:
-            score = self._reading_section_match_score(question, reading_section)
-            if score > best_score:
-                best_score = score
-                best_section_id = reading_section.id
-        return best_section_id
-
-    def _reading_section_match_score(self, question: LearningQuestion, reading_section: ReadingSection) -> int:
-        question_tokens = self._match_tokens(question.prompt_text)
-        section_text = f"{reading_section.title} {reading_section.body_markdown}".lower()
-        section_tokens = self._match_tokens(section_text)
-        score = len(question_tokens & section_tokens)
-        if question.type == "implementation" and any(
-            token in section_text for token in ("file", "build", "implement", "artifact", "deliverable", "code")
-        ):
-            score += 3
-        if any(token in question.prompt_text.lower() for token in ("latency", "throughput", "benchmark", "tokens per second", "tps", "measure", "verify")):
-            if any(token in section_text for token in ("latency", "throughput", "benchmark", "metric", "measure", "verify", "tokens per second", "tps")):
-                score += 3
-        if any(token in question.prompt_text.lower() for token in ("prefill", "decode", "token", "generation", "cache")):
-            if any(token in section_text for token in ("prefill", "decode", "token", "generation", "cache")):
-                score += 3
-        if any(token in question.prompt_text.lower() for token in ("request", "response", "api", "server", "pipeline", "inference", "serving")):
-            if any(token in section_text for token in ("request", "response", "api", "server", "pipeline", "inference", "serving")):
-                score += 3
-        return score
-
-    def _best_concept_ids_for_question(self, question: LearningQuestion, concept_cards: list[ConceptCard]) -> list[str]:
-        ranked_cards: list[tuple[int, str]] = []
-        question_tokens = self._match_tokens(question.prompt_text)
-        anchor_tokens = self._match_tokens(json.dumps(question.roadmap_anchor, sort_keys=True))
-        for card in concept_cards:
-            card_text = " ".join(
-                part
-                for part in (
-                    card.id,
-                    card.concept,
-                    card.title,
-                    card.explanation,
-                    card.why_it_matters,
-                    card.common_mistake,
-                    card.quick_check_question or "",
-                )
-                if part
-            )
-            card_tokens = self._match_tokens(card_text)
-            score = len(question_tokens & card_tokens) + len(anchor_tokens & card_tokens)
-            if score > 0:
-                ranked_cards.append((score, card.id))
-        ranked_cards.sort(key=lambda item: (-item[0], item[1]))
-        if ranked_cards:
-            return [card_id for _score, card_id in ranked_cards[:3]]
-        return [card.id for card in concept_cards[:2]]
 
     def _required_question_ids(self, session: LearningSession) -> list[str]:
         return [
             question.id
             for question in session.questions
-            if question.scope == "core" and question.depth == "baseline" and not question.observation_required
+            if question.depth == "baseline"
         ]
 
     def _question_progress(self, session: LearningSession | None) -> dict[str, Any]:
@@ -1098,20 +834,14 @@ class LearningController:
                 "required_total": 0,
                 "required_passed": 0,
                 "required_pending": 0,
-                "evidence_total": 0,
-                "evidence_answered": 0,
             }
         latest_attempts = self._latest_attempts(session)
         required_ids = self._required_question_ids(session)
         required_passed = sum(1 for question_id in required_ids if latest_attempts.get(question_id, None) and latest_attempts[question_id].result.passed)
-        evidence_ids = [question.id for question in session.questions if question.type == "evidence_based"]
-        evidence_answered = sum(1 for question_id in evidence_ids if question_id in latest_attempts)
         return {
             "required_total": len(required_ids),
             "required_passed": required_passed,
             "required_pending": max(len(required_ids) - required_passed, 0),
-            "evidence_total": len(evidence_ids),
-            "evidence_answered": evidence_answered,
         }
 
     def _required_questions_passed(self, session: LearningSession) -> bool:
@@ -1138,25 +868,22 @@ class LearningController:
     def _requires_evidence(self, ledger: Ledger) -> bool:
         return bool(ledger.state.metrics.required)
 
-    def _observation_ready_for_questions(self, ledger: Ledger) -> bool:
-        return ledger.state.observation is not None and ledger.state.gates.evidence_reliable
-
     def _build_checkpoints(self, ledger: Ledger, learning_session: LearningSession | None) -> list[CheckpointState]:
-        checkpoints = [self._build_core_checkpoint(ledger, learning_session), self._build_implementation_checkpoint(ledger)]
+        checkpoints = [self._build_learning_checkpoint(ledger, learning_session), self._build_implementation_checkpoint(ledger)]
         if self._requires_evidence(ledger):
             checkpoints.append(self._build_evidence_checkpoint(ledger, learning_session))
         return checkpoints
 
-    def _build_core_checkpoint(self, ledger: Ledger, learning_session: LearningSession | None) -> CheckpointState:
+    def _build_learning_checkpoint(self, ledger: Ledger, learning_session: LearningSession | None) -> CheckpointState:
         if learning_session is None:
             return CheckpointState(
-                id="core_concepts",
-                title="Core Concepts",
-                description="Generate Learning Assist content and pass the required baseline core questions.",
-                status="not_started" if not ledger.state.gates.socratic_check_passed else "passed",
+                id="learning_questions",
+                title="Learning Questions",
+                description="Generate Learning Assist content and pass the required baseline questions.",
+                status="not_started" if not ledger.state.gates.learning_check_passed else "passed",
                 reason="Generate Learning Assist to load concept cards and questions."
-                if not ledger.state.gates.socratic_check_passed
-                else "Concept coverage satisfied through the concept gate.",
+                if not ledger.state.gates.learning_check_passed
+                else "Concept coverage satisfied through the required baseline questions.",
             )
 
         progress = self._question_progress(learning_session)
@@ -1172,9 +899,9 @@ class LearningController:
             status = "in_progress"
         reason = f"{progress['required_passed']}/{progress['required_total']} required questions passed."
         return CheckpointState(
-            id="core_concepts",
-            title="Core Concepts",
-            description="Cover the current week's core concept and implementation questions.",
+            id="learning_questions",
+            title="Learning Questions",
+            description="Cover the current week's required baseline questions.",
             status=status,
             reason=reason,
         )
@@ -1219,7 +946,7 @@ class LearningController:
             return CheckpointState(
                 id="evidence_reliability",
                 title="Evidence Reliability",
-                description="Record a structured observation, generate evidence questions, and capture a reflection.",
+                description="Record a structured observation and capture a reflection.",
                 status="not_started",
                 reason="Observation and reflection are still missing.",
             )
@@ -1227,7 +954,7 @@ class LearningController:
             return CheckpointState(
                 id="evidence_reliability",
                 title="Evidence Reliability",
-                description="Record a structured observation, generate evidence questions, and capture a reflection.",
+                description="Record a structured observation and capture a reflection.",
                 status="failed",
                 reason=f"Observation marked as {ledger.state.observation.reliability}.",
             )
@@ -1237,27 +964,23 @@ class LearningController:
             return CheckpointState(
                 id="evidence_reliability",
                 title="Evidence Reliability",
-                description="Record a structured observation, generate evidence questions, and capture a reflection.",
+                description="Record a structured observation and capture a reflection.",
                 status="failed",
                 reason="Reflection reports unreliable or buggy evidence.",
             )
         if ledger.state.gates.evidence_reliable and ledger.state.reflection is not None:
             reason = "Reliable observation recorded and reflection captured."
-            if learning_session is not None:
-                progress = self._question_progress(learning_session)
-                if progress["evidence_total"]:
-                    reason = f"{reason} {progress['evidence_answered']}/{progress['evidence_total']} evidence questions answered."
             return CheckpointState(
                 id="evidence_reliability",
                 title="Evidence Reliability",
-                description="Record a structured observation, generate evidence questions, and capture a reflection.",
+                description="Record a structured observation and capture a reflection.",
                 status="passed",
                 reason=reason,
             )
         return CheckpointState(
             id="evidence_reliability",
             title="Evidence Reliability",
-            description="Record a structured observation, generate evidence questions, and capture a reflection.",
+            description="Record a structured observation and capture a reflection.",
             status="in_progress",
             reason="Evidence is partially recorded but not fully trusted yet.",
         )
