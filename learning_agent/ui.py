@@ -878,11 +878,11 @@ def render_page(
       font-size: 1rem;
     }}
     .learn-reading-section-v3 {{
-      padding: 0;
-      border-radius: 0;
-      background: transparent;
-      border: 0;
-      box-shadow: none;
+      padding: 18px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.74);
+      border: 1px solid rgba(191, 208, 220, 0.72);
+      box-shadow: var(--shadow-soft);
     }}
     .learn-reading-section-v3 + .learn-reading-section-v3 {{
       margin-top: 18px;
@@ -1295,6 +1295,10 @@ def render_page(
       font-size: 0.96rem;
       line-height: 1.45;
       color: var(--text);
+    }}
+    .required-question-marker {{
+      color: #c7332f;
+      font-weight: 800;
     }}
     .question-links {{
       display: flex;
@@ -5917,13 +5921,16 @@ def render_learning_workspace(
     progress_percent = 0 if required_total == 0 else round((required_passed / required_total) * 100)
     rubric = render_items(selected_question.get("scoring_rubric", []))
     status = question_attempt_status(attempts, selected_question["id"])
+    latest_attempt = attempts.get(selected_question["id"], {})
+    previous_answer = latest_attempt.get("answer", "")
     return f"""
     <article class="subpanel question-column" id="question-workspace">
       <div class="step-title-row">
         <div>
           <h3>Answer Question</h3>
           <p class="fine-print">Question {question_index + 1} of {len(questions)}</p>
-          <p class="question-prompt-v3">{escape(selected_question['prompt_text'])}</p>
+          <p class="question-prompt-v3">{format_question_prompt_html(selected_question)}</p>
+          <p class="fine-print"><span class="required-question-marker">*</span> Required to unlock Build</p>
         </div>
         {render_question_status_badge(selected_question['id'], status)}
       </div>
@@ -5949,7 +5956,7 @@ def render_learning_workspace(
         <input type="hidden" name="action" value="learning_answer">
         <input type="hidden" name="question_id" value="{escape(selected_question['id'])}">
         <label>Answer
-          <textarea name="learning_answer" placeholder="Answer this question while using the material on the left as reference." data-learning-answer-textarea></textarea>
+          <textarea name="learning_answer" placeholder="Answer this question while using the material on the left as reference." data-learning-answer-textarea>{escape(previous_answer)}</textarea>
         </label>
         <p class="fine-print" data-draft-status></p>
         <button type="submit">Submit Answer</button>
@@ -5991,7 +5998,7 @@ def render_question_list_modal(
             f"<span class='question-modal-index'>Question {index}</span>"
             f"{render_question_status_badge(question['id'], question_attempt_status(attempts, question['id']))}"
             "</div>"
-            f"<div class='question-modal-prompt'>{escape(question['prompt_text'])}</div>"
+            f"<div class='question-modal-prompt'>{format_question_prompt_html(question)}</div>"
             "</a>"
             "</li>"
         )
@@ -6002,7 +6009,7 @@ def render_question_list_modal(
         <div class="question-modal-header">
           <div class="stack">
             <h3>Full Question List</h3>
-            <p class="muted">Browse every question and see which ones are passed, failed, or not started.</p>
+            <p class="muted">Browse every question and see which ones are passed, failed, or not started. `*` marks a required question.</p>
           </div>
           <button type="button" class="button-link secondary question-modal-close" data-question-modal-close aria-label="Close question list">×</button>
         </div>
@@ -6022,6 +6029,22 @@ def select_learning_question(questions: list[dict], selected_question_id: Option
             if question["id"] == selected_question_id:
                 return question
     return questions[0]
+
+
+def is_required_learning_question(question: dict) -> bool:
+    return question.get("depth") == "baseline"
+
+
+def format_question_prompt(question: dict) -> str:
+    prompt = str(question.get("prompt_text") or "").strip()
+    return f"{prompt} *" if is_required_learning_question(question) and prompt else prompt
+
+
+def format_question_prompt_html(question: dict) -> str:
+    prompt = escape(str(question.get("prompt_text") or "").strip())
+    if is_required_learning_question(question) and prompt:
+        return f"{prompt} <span class=\"required-question-marker\">*</span>"
+    return prompt
 
 
 def render_task_panel(status: dict, task_session: Optional[dict], current_step: str) -> str:
@@ -6212,7 +6235,7 @@ def render_learning_answer_panel(learning_session: Optional[dict]) -> str:
     options = []
     for question in (learning_session or {}).get("questions", []):
         options.append(
-            f"<option value=\"{escape(question['id'])}\">{escape(question['id'])} - {escape(question['prompt_text'])}</option>"
+            f"<option value=\"{escape(question['id'])}\">{escape(question['id'])} - {escape(format_question_prompt(question))}</option>"
         )
     options_html = "".join(options) or "<option value=\"\">Generate Learning Assist first</option>"
     disabled_attr = " disabled" if not options else ""

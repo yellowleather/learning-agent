@@ -235,6 +235,11 @@ class CountingProvider(FakeProvider):
         return super().generate_question_bank(week_spec, ledger_state)
 
 
+class FailingProvider(FakeProvider):
+    def score_learning_question(self, week_spec, question, answer, observation):
+        return {"passed": False, "score_rationale": "Missing a key idea.", "missing_concepts": ["iterative decoding"]}
+
+
 class StreamingProvider(FakeProvider):
     def stream_topic_chat(self, week_spec, context, history, message):
         yield "Tutor reply "
@@ -480,6 +485,11 @@ def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
     assert "See Full Question List" in page
     assert 'id="question-list-modal"' in page
     assert "Full Question List" in page
+    assert 'Explain prefill vs decode. <span class="required-question-marker">*</span>' in page
+    assert 'Baseline concept question 3 <span class="required-question-marker">*</span>' in page
+    assert "`*` marks a required question." in page
+    assert ".required-question-marker {" in page
+    assert 'color: #c7332f;' in page
     assert 'role="progressbar"' in page
     assert "/?question_id=prefill_decode_baseline" in page
     assert "data-question-step-link" in page
@@ -524,6 +534,40 @@ def test_marathon_strip_advances_when_a_required_question_passes(monkeypatch, tm
 
     after = render_page(selected_question_id="prefill_decode_baseline")
     assert "Week 1 / Question 1 of 50" in after
+    assert (
+        '<textarea name="learning_answer" placeholder="Answer this question while using the material on the left as reference." '
+        'data-learning-answer-textarea>Prefill processes the prompt and decode emits tokens autoregressively.</textarea>'
+    ) in after
+
+
+def test_failed_answer_is_reloaded_into_textarea(monkeypatch, tmp_path):
+    write_config(tmp_path)
+    write_roadmap(tmp_path)
+    (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: FailingProvider())
+
+    assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
+    assert run_action("learning_generate", {"action": ["learning_generate"]}) == "Generated Learning Assist for Week 1."
+
+    submitted = "QKV are just weights and they help the model somehow."
+    result = run_action(
+        "learning_answer",
+        {
+            "action": ["learning_answer"],
+            "question_id": ["prefill_decode_baseline"],
+            "learning_answer": [submitted],
+        },
+    )
+
+    assert result == "Question failed."
+
+    after = render_page(selected_question_id="prefill_decode_baseline")
+    assert (
+        '<textarea name="learning_answer" placeholder="Answer this question while using the material on the left as reference." '
+        f'data-learning-answer-textarea>{submitted}</textarea>'
+    ) in after
 
 
 def test_run_topic_chat_returns_json(monkeypatch, tmp_path):
