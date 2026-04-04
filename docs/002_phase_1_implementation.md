@@ -169,7 +169,7 @@ The ledger shape in Phase 1 is:
   },
   "state": {
     "current_week": 1,
-    "active_functional_dirs": ["simple_server", "docs"],
+    "active_dirs": ["simple_server", "docs"],
     "gates": {
       "learning_check_passed": false,
       "implementation_complete": false,

@@ -16,7 +16,7 @@ This guide explains what has actually been built, how it works in code, how the 
 The current implementation provides:
 
 - Learning Assist generation for the current unlocked week,
-- a multi-stage learning pipeline built from question banks, reading material, concept cards, and derived figure assets,
+- a multi-stage learning pipeline built from question banks, reading material, and concept cards,
 - question banks with `depth` and rubric metadata,
 - free-text question answering and scoring,
 - structured observation capture,
@@ -41,7 +41,6 @@ The main implementation lives in:
 ```text
 learning_agent/
 ├── assets/
-│   └── illustrations/
 ├── providers/
 │   ├── base.py
 │   ├── factory.py
@@ -77,11 +76,9 @@ The implementation uses these main data structures in [learning_agent/models.py]
 - `LearningQuestionBankPayload`
 - `QuestionScore`
 - `QuestionAttempt`
-- `ReadingSection`
 - `ReadingMaterialPayload`
 - `ConceptCard`
 - `ConceptCardPayload`
-- `FigureAsset`
 - `LearningSession`
 - `LearningBundle`
 - `TopicChatTurn`
@@ -92,7 +89,7 @@ The implementation uses these main data structures in [learning_agent/models.py]
 
 Important relationships in the current implementation:
 
-- `LearningSession` stores the current week's concept cards, figures, reading sections, questions, and attempts.
+- `LearningSession` stores the current week's concept cards, reading material, questions, and attempts.
 
 The week-level ledger state also includes:
 
@@ -158,7 +155,7 @@ The ledger looks roughly like this:
   },
   "state": {
     "current_week": 1,
-    "active_functional_dirs": ["simple_server", "docs"],
+    "active_dirs": ["simple_server", "docs"],
     "gates": {
       "learning_check_passed": false,
       "implementation_complete": false,
@@ -218,18 +215,16 @@ The implemented Learning Assist pipeline is **questions first**, but it is now e
 
 1. generate a current-week question bank directly in the final `LearningQuestion` schema,
 2. validate the generated questions in the controller,
-3. generate learner-facing reading sections from the question bank,
-4. validate and normalize reading sections,
-5. generate concept cards from the reading sections,
+3. generate one learner-facing reading document from the question bank,
+4. validate and normalize the reading document,
+5. generate concept cards from the reading document,
 6. validate and normalize concept cards,
-7. derive figure assets,
-8. save the assembled `LearningSession`.
+7. save the assembled `LearningSession`.
 
 The current `LearningSession` contains:
 
 - `concept_cards`
-- `figures`
-- `reading_sections`
+- `reading_material`
 - `questions`
 - `attempts`
 
@@ -304,9 +299,9 @@ Specifically:
 1. `generate_learning_assist()` asks the provider for a large current-week question bank.
 2. The provider targets at least 50 concept questions across `baseline`, `deep`, and `stretch` in a single generation call.
 3. The controller validates counts, uniqueness, depth coverage, and schema shape before continuing.
-4. The provider writes blog-style reading material designed to make the question bank answerable.
+4. The provider writes one blog-style reading document designed to make the question bank answerable.
 5. The provider generates concept cards from the reading material, not directly from the question bank.
-6. The controller normalizes section/card IDs and assigns illustration-backed figure assets.
+6. The controller normalizes the reading material and concept cards.
 7. `answer_learning_question()` makes one LLM call per submitted answer to score it against the question rubric and current observation context, if any.
 
 The important implementation detail is that generation is constrained by:
@@ -338,10 +333,10 @@ Stay fully scoped to this week only.
 Return each question with only: id, depth, prompt_text, scoring_rubric.
 ```
 
-The reading prompt then generates 3-6 reading blocks and requires:
+The reading prompt then generates one reading document and requires:
 
-- the first block to be `week_map`,
-- the title `How This Week Works`,
+- `body_markdown` to contain a `## How This Week Works` heading,
+- additional `##` headings for the major themes of the week,
 - a blog-style explainer tone rather than UI or product language.
 
 The concept-card prompt then derives cards from the reading material and requires:
@@ -421,7 +416,6 @@ The current UI supports:
 - Learning Assist visibility toggle,
 - reading-section display,
 - concept-card display,
-- figure/illustration display,
 - question-bank display,
 - question answering,
 - task generation,
@@ -512,7 +506,7 @@ The In-Context Learning Loop is implemented as a real Phase 1 feature, not just 
 The current implementation adds:
 
 - multi-stage Learning Assist generation,
-- on-platform reading sections, concept cards, and derived figure assets,
+- on-platform reading material and concept cards,
 - typed question-bank generation and scoring,
 - structured observation and reflection capture,
 - evidence-based follow-up questioning,

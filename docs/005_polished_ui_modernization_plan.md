@@ -7,7 +7,7 @@ This document captures the planned evolution of the Learning Agent UI from the c
 The goal is not a visual refresh alone. The goal is to support a better learning workflow:
 
 - visual concept cards,
-- chapter-style reading material with images,
+- chapter-style reading material,
 - side-by-side reading and question answering,
 - a more guided "open book exam" experience,
 - a frontend architecture that can support richer interaction without fighting the implementation.
@@ -57,8 +57,8 @@ That was the correct tradeoff for Phase 1 because it was fast to build and easy 
 
 The main limitations are:
 
-- image-rich concept cards are awkward to implement and maintain,
-- chapter-style reading material with structured figures is cumbersome,
+- concept-card-heavy learning surfaces are awkward to implement and maintain,
+- chapter-style reading material is cumbersome,
 - split-pane "reading + questions" workflows are difficult to build well,
 - sticky navigation, autosave, linked references, and richer interaction are all significantly harder than they should be,
 - continued investment in HTML-string rendering will make product polish slower and more fragile over time.
@@ -69,7 +69,6 @@ The desired product shape is:
 
 - concept cards that feel like real learning cards, not plain text blocks,
 - reading material that sits between the cards and the question set,
-- images and diagrams embedded throughout the learning experience,
 - a right-side answer workspace where the user can answer while keeping the source material open,
 - a more polished product experience overall, not just an internal control panel.
 
@@ -114,7 +113,6 @@ Move these responsibilities into the new frontend:
 
 - layout,
 - navigation,
-- image rendering,
 - split-pane workspace behavior,
 - answer drafts and local editor state,
 - section highlighting and linked references,
@@ -146,7 +144,6 @@ Left pane:
 
 - concept cards,
 - reading material,
-- inline figures and captions,
 - sticky reading workspace.
 
 Current server-rendered implementation note:
@@ -219,50 +216,27 @@ It should add a richer bundle for the learning experience.
 - `summary`
 - `why_it_matters`
 - `common_mistake`
-- `image`
 
-`Figure`
+`ReadingMaterial`
 
-- `id`
-- `image_path`
-- `caption`
-- `alt_text`
-
-`ReadingSection`
-
-- `id`
 - `title`
 - `body_markdown`
-- `figure_ids`
 
 `LearningBundle`
 
 - `week`
 - `concept_cards[]`
-- `figures[]`
-- `reading_sections[]`
+- `reading_material`
 - `questions[]`
 
 Current product-direction note:
 
-- the generation order should be `questions -> reading sections -> concept cards`,
-- reading sections should behave like a concise technical blog post for the current week,
-- only the top orientation block should be fixed; the remaining reading blocks should be generated from the current week's question themes,
+- the generation order should be `questions -> reading material -> concept cards`,
+- reading material should behave like a concise technical blog post for the current week,
+- the reading should begin with `## How This Week Works`, and the remaining markdown sections should be generated from the current week's question themes,
 - concept cards should be generated from and anchored to that reading material,
-- `How This Week Works` should be surfaced as a separate orientation block at the top of the Learn UI, not buried in the regular reading stack,
+- `How This Week Works` should remain visible near the top of the Learn UI even though it now lives inside one markdown document,
 - concept cards should not be treated as a separate primary source of truth that independently drives the question set.
-
-### 6.3 Images
-
-Images should be first-class content, not incidental attachments.
-
-Initial approach:
-
-- support local/static image assets,
-- allow concept cards and reading sections to reference them by path,
-- keep image generation optional for the first version.
-
-Do not make the learning flow depend on AI image generation in the first release of the new UI.
 
 ## 7. Reading Material Strategy
 
@@ -273,7 +247,6 @@ It should be:
 - short enough to actually read,
 - scoped to the current week,
 - sufficient to answer the required question set,
-- visual, with diagrams where they materially help,
 - structured in sections rather than dumped as one large document.
 
 Operationally, the reading should be written with a clear objective:
@@ -324,7 +297,8 @@ The most important new endpoint is:
 
 - `GET /api/learning/bundle`
 
-That endpoint should return the concept cards, figures, reading sections, question set, and progress state needed to render the `Learn Workspace`.
+That endpoint should return the concept cards, reading material, question set, and progress state needed to render the `Learn Workspace`.
+That endpoint should return the concept cards, reading material, question set, and progress state needed to render the `Learn Workspace`.
 
 ## 9. Rollout Plan
 
@@ -339,7 +313,7 @@ This should be built incrementally, not as a big-bang rewrite.
 
 ### Phase 2: Schema Upgrade
 
-- extend the learning models with figures and reading sections,
+- extend the learning models with reading material,
 - add a learning bundle representation,
 - persist the additional content alongside the learning session.
 
@@ -351,7 +325,6 @@ This should be built incrementally, not as a big-bang rewrite.
 
 ### Phase 4: Learn Workspace Vertical Slice
 
-- concept cards with image support,
 - reading material renderer,
 - side-by-side reading + answer workspace,
 - answer submission,
@@ -365,7 +338,6 @@ This should be built incrementally, not as a big-bang rewrite.
 - autosaved drafts,
 - sticky navigation,
 - keyboard navigation,
-- figure lightbox behavior,
 - improved transitions and loading states,
 - higher-quality visual design across desktop and mobile.
 
@@ -393,7 +365,7 @@ PR 1:
 
 PR 2:
 
-- add figure and reading-section models,
+- add reading-material models,
 - add `GET /api/learning/bundle`,
 - keep content generation backward-compatible.
 
@@ -405,7 +377,7 @@ PR 3:
 PR 4:
 
 - build the split-pane `Learn Workspace`,
-- render concept cards and chapter content with image support.
+- render concept cards and chapter content.
 
 PR 5:
 
@@ -423,7 +395,6 @@ The first milestone should not try to solve everything.
 
 Specifically outside this milestone:
 
-- mandatory AI-generated images,
 - multi-user collaboration,
 - production deployment architecture,
 - replacing the Python controller logic,
@@ -433,7 +404,7 @@ Specifically outside this milestone:
 
 The modernization is successful when:
 
-- concept cards are visually distinct and image-supported,
+- concept cards are visually distinct,
 - reading material is clearly part of the learning flow,
 - the user can answer questions while keeping source material visible,
 - question navigation is available without cluttering the main answer surface,

@@ -9,10 +9,9 @@ The current implementation is a Phase 1 single-controller system. It reads a roa
 - Parses a roadmap markdown file into week-level learning and delivery requirements.
 - Persists progress outside model context in `state/`.
 - Generates Learning Assist content for the current week:
-  - blog-style reading sections
+  - one blog-style reading document
   - concept cards
   - typed question banks
-  - evidence-based follow-up questions after valid observations
 - Generates a scoped Junior SWE task for the active week.
 - Tracks required artifacts, metrics, verification, observations, and reflection.
 - Exposes the workflow through both a CLI and a local web UI.
@@ -25,7 +24,7 @@ The current implementation is a Phase 1 single-controller system. It reads a roa
 ├── learning_agent/            # Core package
 │   ├── providers/             # LLM provider abstraction + OpenAI implementation
 │   ├── prompts/               # Mentor and Junior prompt templates
-│   ├── assets/                # UI assets and illustrations
+│   ├── assets/                # UI assets
 │   ├── cli.py                 # Typer CLI
 │   ├── controller.py          # Main workflow/state machine
 │   ├── curriculum.py          # Roadmap markdown parser
