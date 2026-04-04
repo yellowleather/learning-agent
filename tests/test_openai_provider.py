@@ -21,9 +21,22 @@ def _week_spec() -> dict:
         "title": "Week 1: Build a Baseline Inference Server",
         "short_title": "Build a Baseline Inference Server",
         "goal": "Run a model locally and expose it as an API.",
+        "narrative": "This week establishes the baseline serving path and first measurements.",
+        "topics_covered": ["prefill vs decode", "request flow"],
+        "by_the_end_of_this_week_you_will_be_able_to": [
+            "Explain how the baseline server works",
+            "Measure the first performance numbers",
+        ],
+        "assessment_targets": [
+            "Explain prefill vs decode.",
+            "Describe how to benchmark the server.",
+        ],
+        "tasks": ["`simple_server/server.py` - API server entrypoint."],
+        "deliverable_paths": ["simple_server/server.py", "docs/baseline_results.md"],
         "active_dirs": ["simple_server"],
         "required_files": ["simple_server/server.py"],
         "required_metrics": ["latency_p95"],
+        "key_resources": ["Example resource"],
     }
 
 
@@ -44,6 +57,70 @@ def test_normalize_question_bank_payload_maps_question_variants():
     normalized = provider._normalize_payload(payload, LearningQuestionBankPayload)
 
     assert normalized["questions"][0]["depth"] == "deep"
+
+
+def test_generate_prior_knowledge_summary_uses_full_plan_and_target_week(monkeypatch):
+    provider = OpenAIProvider(model="test-model")
+    captured = {}
+
+    def fake_completion(system_prompt, user_prompt):
+        captured["system_prompt"] = system_prompt
+        captured["user_prompt"] = user_prompt
+        return "The learner can explain basic request flow."
+
+    monkeypatch.setattr(provider, "_completion_as_text", fake_completion)
+
+    summary = provider.generate_prior_knowledge_summary(
+        full_plan="# Plan\n\n## Week 1: Intro\n",
+        target_week_number=2,
+    )
+
+    assert summary == "The learner can explain basic request flow."
+    prompt = captured["user_prompt"]
+    assert "Given a multi-week learning plan" in prompt
+    assert "## Full learning plan" in prompt
+    assert "# Plan" in prompt
+    assert "## Target week" in prompt
+    assert "2" in prompt
+
+
+def test_generate_question_bank_uses_prior_knowledge_and_week_plan(monkeypatch):
+    provider = OpenAIProvider(model="test-model")
+    captured = {}
+
+    def fake_completion(system_prompt, user_prompt, response_model):
+        captured["system_prompt"] = system_prompt
+        captured["user_prompt"] = user_prompt
+        captured["response_model"] = response_model
+        return LearningQuestionBankPayload(
+            week=1,
+            questions=[
+                LearningQuestion(
+                    id="q1",
+                    depth="baseline",
+                    prompt_text="Explain prefill vs decode.",
+                    scoring_rubric=["Mention prompt processing.", "Mention iterative decoding."],
+                )
+            ],
+        )
+
+    monkeypatch.setattr(provider, "_completion_as_model", fake_completion)
+
+    payload = provider.generate_question_bank(
+        week_spec=_week_spec(),
+        prior_knowledge_summary="The learner has no prior knowledge of LLMs, transformers, or inference systems.",
+        ledger_state=ProgressState(current_week=1),
+    )
+
+    assert payload.week == 1
+    prompt = captured["user_prompt"]
+    assert "## Prior knowledge" in prompt
+    assert "The learner has no prior knowledge of LLMs" in prompt
+    assert "## Current week plan" in prompt
+    assert "Week 1: Build a Baseline Inference Server" in prompt
+    assert "Required Metrics:" in prompt
+    assert '"current_week": 1' in prompt
+    assert captured["response_model"] is LearningQuestionBankPayload
 
 
 def test_answer_topic_chat_uses_week_context_and_history(monkeypatch):
@@ -94,6 +171,7 @@ def test_generate_reading_material_uses_blog_style_contract(monkeypatch):
 
     payload = provider.generate_reading_material(
         week_spec=_week_spec(),
+        prior_knowledge_summary="The learner has no prior knowledge of LLMs, transformers, or inference systems.",
         ledger_state=ProgressState(current_week=1),
         questions=[
             LearningQuestion(
@@ -107,11 +185,13 @@ def test_generate_reading_material_uses_blog_style_contract(monkeypatch):
 
     assert payload.week == 1
     prompt = captured["user_prompt"]
-    assert "technical blog post or explainer" in prompt
-    assert "Do not mention the words chapter, section, concept card" in prompt
+    assert "graduate-level textbook" in prompt
+    assert "Do not mention the words concept card, question bank" in prompt
     assert "## How This Week Works" in prompt
-    assert "After that opening section, include additional `##` headings" in prompt
-    assert "Do not assume Week 1 topics such as prefill/decode unless they are clearly supported by the provided questions." in prompt
+    assert "### Prior knowledge summary" in prompt
+    assert "The learner has no prior knowledge of LLMs" in prompt
+    assert "### Current week plan" in prompt
+    assert "Week 1: Build a Baseline Inference Server" in prompt
     assert captured["response_model"] is ReadingMaterialPayload
 
 
@@ -157,8 +237,9 @@ def test_generate_concept_cards_from_reading_uses_reading_material_contract(monk
 
     assert payload.week == 1
     prompt = captured["user_prompt"]
-    assert "Generate learner-facing concept cards derived from the provided current-week reading material." in prompt
-    assert "Do not generate cards directly from a question bank." in prompt
+    assert "Generate learner-facing concept cards derived from the" in prompt
+    assert "provided current-week reading material. Output JSON only." in prompt
+    assert "generate cards directly from the question bank" in prompt
     assert '"id": "prefill-vs-decode"' in prompt
     assert captured["response_model"] is ConceptCardPayload
 

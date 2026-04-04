@@ -278,7 +278,7 @@ Current fields:
 
 ```json
 {
-  "provider": "openai",
+  "provider": "anthropic",
   "model": "",
   "roadmap_path": "ai_inference_engineering/docs/inference_engineering_8_week_plan.md",
   "target_repo_path": "ai_inference_engineering",
@@ -293,7 +293,7 @@ Secrets are expected via:
 Example:
 
 ```dotenv
-OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
 ```
 
 `.env` is loaded automatically by [learning_agent/config.py](/Users/prakhar/learning_agent/learning_agent/config.py) and is git-ignored.

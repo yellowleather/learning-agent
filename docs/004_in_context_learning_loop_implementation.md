@@ -46,14 +46,15 @@ learning_agent/
 │   ├── factory.py
 │   └── openai_provider.py
 ├── prompts/
-│   ├── concept_cards_from_reading_user.md
-│   ├── generate_task_user.md
+│   ├── concept_cards_from_reading.md
+│   ├── generate_task.md
 │   ├── junior.md
-│   ├── question_bank_user.md
-│   ├── reading_material_user.md
-│   ├── score_learning_question_user.md
+│   ├── prior_knowledge_summary.md
+│   ├── question_bank.md
+│   ├── reading_material.md
+│   ├── score_learning_question.md
 │   ├── mentor.md
-│   └── topic_chat_user.md
+│   └── topic_chat.md
 ├── cli.py
 ├── controller.py
 ├── models.py
@@ -300,12 +301,12 @@ The current prompt files are:
 
 - [learning_agent/prompts/mentor.md](/Users/prakhar/learning_agent/learning_agent/prompts/mentor.md)
 - [learning_agent/prompts/junior.md](/Users/prakhar/learning_agent/learning_agent/prompts/junior.md)
-- [learning_agent/prompts/question_bank_user.md](/Users/prakhar/learning_agent/learning_agent/prompts/question_bank_user.md)
-- [learning_agent/prompts/reading_material_user.md](/Users/prakhar/learning_agent/learning_agent/prompts/reading_material_user.md)
-- [learning_agent/prompts/concept_cards_from_reading_user.md](/Users/prakhar/learning_agent/learning_agent/prompts/concept_cards_from_reading_user.md)
-- [learning_agent/prompts/generate_task_user.md](/Users/prakhar/learning_agent/learning_agent/prompts/generate_task_user.md)
-- [learning_agent/prompts/score_learning_question_user.md](/Users/prakhar/learning_agent/learning_agent/prompts/score_learning_question_user.md)
-- [learning_agent/prompts/topic_chat_user.md](/Users/prakhar/learning_agent/learning_agent/prompts/topic_chat_user.md)
+- [learning_agent/prompts/question_bank.md](/Users/prakhar/learning_agent/learning_agent/prompts/question_bank.md)
+- [learning_agent/prompts/reading_material.md](/Users/prakhar/learning_agent/learning_agent/prompts/reading_material.md)
+- [learning_agent/prompts/concept_cards_from_reading.md](/Users/prakhar/learning_agent/learning_agent/prompts/concept_cards_from_reading.md)
+- [learning_agent/prompts/generate_task.md](/Users/prakhar/learning_agent/learning_agent/prompts/generate_task.md)
+- [learning_agent/prompts/score_learning_question.md](/Users/prakhar/learning_agent/learning_agent/prompts/score_learning_question.md)
+- [learning_agent/prompts/topic_chat.md](/Users/prakhar/learning_agent/learning_agent/prompts/topic_chat.md)
 
 Prompt loading and placeholder rendering live in:
 
@@ -553,7 +554,7 @@ The current implementation adds:
 The implementation remains intentionally simple:
 
 - one controller,
-- OpenAI-backed structured generation/scoring outputs plus streamed topic-chat text,
+- provider-backed structured generation/scoring outputs plus topic-chat text,
 - controller-side validation and normalization,
 - runtime-derived checkpoints,
 - explicit approval blockers instead of hidden progression logic.

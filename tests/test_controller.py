@@ -177,7 +177,12 @@ def _concept_cards_for(_reading_material):
 
 
 class FakeProvider:
-    def generate_question_bank(self, week_spec, ledger_state):
+    def generate_prior_knowledge_summary(self, full_plan, target_week_number):
+        del full_plan, target_week_number
+        return "The learner has no prior knowledge of LLMs, transformers, or inference systems."
+
+    def generate_question_bank(self, week_spec, prior_knowledge_summary, ledger_state):
+        del prior_knowledge_summary, ledger_state
         questions = [
             {
                 "id": "prefill_decode_baseline",
@@ -226,7 +231,8 @@ class FakeProvider:
             questions=questions,
         )
 
-    def generate_reading_material(self, week_spec, ledger_state, questions):
+    def generate_reading_material(self, week_spec, prior_knowledge_summary, ledger_state, questions):
+        del week_spec, prior_knowledge_summary, ledger_state
         return _reading_material_for(questions)
 
     def generate_concept_cards_from_reading(self, week_spec, ledger_state, reading_material):
@@ -302,6 +308,91 @@ class JsonStreamingChatProvider(FakeProvider):
         yield "```json\n"
         yield '{"response": "Could you clarify your question? '
         yield 'Are you asking about testing a specific aspect of the inference server?"}\n```'
+
+
+class VariantProvider(FakeProvider):
+    def __init__(self, prefix: str):
+        self.prefix = prefix
+
+    def generate_prior_knowledge_summary(self, full_plan, target_week_number):
+        del full_plan, target_week_number
+        return f"{self.prefix} prior knowledge summary."
+
+    def generate_question_bank(self, week_spec, prior_knowledge_summary, ledger_state):
+        payload = super().generate_question_bank(week_spec, prior_knowledge_summary, ledger_state)
+        questions = []
+        for index, question in enumerate(payload.questions, start=1):
+            entry = question.model_dump(mode="json") if hasattr(question, "model_dump") else dict(question)
+            entry["id"] = f"{self.prefix}_{index}"
+            entry["prompt_text"] = f"{self.prefix}: {entry['prompt_text']}"
+            questions.append(entry)
+        return LearningQuestionBankPayload(week=payload.week, questions=questions)
+
+    def generate_reading_material(self, week_spec, prior_knowledge_summary, ledger_state, questions):
+        del week_spec, prior_knowledge_summary, ledger_state, questions
+        return ReadingMaterialPayload(
+            week=1,
+            title=f"{self.prefix.title()} Reading",
+            body_markdown=(
+                "## How This Week Works\n\n"
+                f"{self.prefix} overview of the system. "
+                "This opening explains how the request boundary, model runtime, token generation loop, "
+                "and measurement discipline fit together before implementation starts. "
+                "It gives enough context to understand why the week exists, how the system behaves, "
+                "and which distinctions matter when reasoning about performance, correctness, and later implementation work. "
+                "The learner should come away with a concrete mental model rather than a vague summary.\n\n"
+                "## Topic A\n\n"
+                f"{self.prefix} topic A details. "
+                "This part spells out the first mechanism in technical terms, explains the failure modes, "
+                "and connects the concept back to the request path. "
+                "It emphasizes what changes during runtime, what remains stable across requests, "
+                "and how the learner should reason about the tradeoffs when metrics move unexpectedly. "
+                "The explanation is deliberately detailed so the validator sees a reading body large enough to support the questions.\n\n"
+                "## Topic B\n\n"
+                f"{self.prefix} topic B details. "
+                "This part continues with a second mechanism and explains why surface-level recall is insufficient. "
+                "It distinguishes related ideas, addresses a likely misconception, and shows how observable behavior can be traced "
+                "back to the underlying inference path. "
+                "That way the reading supports both conceptual questions and later implementation reasoning without collapsing into steps.\n\n"
+                "## Topic C\n\n"
+                f"{self.prefix} topic C details. "
+                "This final part ties the week back to files, deliverables, and metrics while remaining conceptual. "
+                "It explains why those artifacts exist, what system responsibility they correspond to, "
+                "and how a learner should interpret results produced during verification. "
+                "The goal is depth, not brevity, so the content stays comfortably above the minimum length requirement."
+            ),
+        )
+
+    def generate_concept_cards_from_reading(self, week_spec, ledger_state, reading_material):
+        del week_spec, ledger_state, reading_material
+        return ConceptCardPayload(
+            week=1,
+            concept_cards=[
+                {
+                    "id": f"{self.prefix}-card-{index}",
+                    "concept": f"{self.prefix}_concept_{index}",
+                    "title": f"{self.prefix.title()} Card {index}",
+                    "explanation": f"{self.prefix} explanation {index}.",
+                    "why_it_matters": f"{self.prefix} matters {index}.",
+                    "common_mistake": f"{self.prefix} mistake {index}.",
+                    "quick_check_question": f"{self.prefix} quick check {index}?",
+                }
+                for index in range(1, 4)
+            ],
+        )
+
+
+class InvalidQuestionBankProvider(VariantProvider):
+    def generate_question_bank(self, week_spec, prior_knowledge_summary, ledger_state):
+        payload = super().generate_question_bank(week_spec, prior_knowledge_summary, ledger_state)
+        questions = [question.model_dump(mode="json") for question in payload.questions[:48]]
+        deep_seen = 0
+        for question in questions:
+            if question["depth"] == "deep":
+                deep_seen += 1
+                if deep_seen > 18:
+                    question["depth"] = "baseline"
+        return LearningQuestionBankPayload(week=payload.week, questions=questions)
 
 
 def write_config(tmp_path: Path, roadmap_path: Path, target_repo_path: Path) -> None:
@@ -583,6 +674,83 @@ def test_learning_assist_flow_records_evidence_and_reflection(monkeypatch, tmp_p
 
     approved = controller.approve_week()
     assert approved.state.gates.week_approved is True
+
+
+def test_compare_learning_providers_resets_state_and_writes_outputs(monkeypatch, tmp_path):
+    controller, target_repo = make_controller(tmp_path, monkeypatch)
+    controller.initialize()
+
+    session = controller.generate_learning_assist()
+    assert session.questions
+    for question in session.questions:
+        if question.depth == "baseline":
+            controller.answer_learning_question(question.id, f"Answer for {question.id}.")
+    controller.generate_task()
+    (target_repo / "simple_server" / "server.py").write_text("print('ok')\n")
+    (target_repo / "simple_server" / "benchmark.py").write_text("print('ok')\n")
+    (target_repo / "docs" / "baseline_results.md").write_text("latency_p95: 10\n")
+    controller.sync_artifacts()
+    controller.record_metric("latency_p95", 10.0)
+    controller.record_verification(True, "Local verification passed.")
+
+    output_dir = tmp_path / "tmp" / "learning_compare" / "case"
+    result = controller.compare_learning_providers(
+        providers=[
+            ("claude", "claude-test", VariantProvider("claude")),
+            ("gpt", "gpt-test", VariantProvider("gpt")),
+        ],
+        output_dir=output_dir,
+    )
+
+    assert result["output_dir"] == str(output_dir)
+    assert controller.get_learning_session() is None
+    assert controller.get_task_session() is None
+    assert result["providers"][0]["status"] == "valid"
+    assert result["providers"][1]["status"] == "valid"
+
+    ledger = controller.state.load_ledger()
+    assert ledger.state.gates.learning_check_passed is False
+    assert ledger.state.gates.implementation_complete is False
+    assert ledger.state.gates.verification_passed is False
+    assert ledger.state.metrics.recorded == {}
+    assert ledger.state.verification is None
+
+    assert (output_dir / "claude" / "prior_knowledge_summary.txt").exists()
+    assert (output_dir / "claude" / "question_bank.json").exists()
+    assert (output_dir / "claude" / "reading_material.json").exists()
+    assert (output_dir / "claude" / "concept_cards.json").exists()
+    assert (output_dir / "claude" / "validation_errors.json").exists()
+    assert (output_dir / "gpt" / "prior_knowledge_summary.txt").exists()
+    assert (output_dir / "gpt" / "question_bank.json").exists()
+    assert (output_dir / "gpt" / "reading_material.json").exists()
+    assert (output_dir / "gpt" / "concept_cards.json").exists()
+    assert (output_dir / "gpt" / "validation_errors.json").exists()
+
+
+def test_compare_learning_providers_continues_when_one_provider_is_invalid(monkeypatch, tmp_path):
+    controller, _target_repo = make_controller(tmp_path, monkeypatch)
+    controller.initialize()
+
+    output_dir = tmp_path / "tmp" / "learning_compare" / "invalid-case"
+    result = controller.compare_learning_providers(
+        providers=[
+            ("claude", "claude-test", InvalidQuestionBankProvider("claude")),
+            ("gpt", "gpt-test", VariantProvider("gpt")),
+        ],
+        output_dir=output_dir,
+    )
+
+    providers = {item["provider_label"]: item for item in result["providers"]}
+    assert providers["claude"]["status"] == "invalid"
+    assert providers["gpt"]["status"] == "valid"
+    assert (output_dir / "claude" / "question_bank.json").exists()
+    assert (output_dir / "claude" / "reading_material.json").exists()
+    assert (output_dir / "claude" / "concept_cards.json").exists()
+    assert (output_dir / "claude" / "validation_errors.json").exists()
+    assert (output_dir / "gpt" / "question_bank.json").exists()
+
+    validation_errors = json.loads((output_dir / "claude" / "validation_errors.json").read_text())
+    assert validation_errors["question_bank"]
 
 
 def test_answer_topic_chat_builds_learn_context(monkeypatch, tmp_path):

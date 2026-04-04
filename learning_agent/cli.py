@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -18,6 +19,8 @@ from learning_agent.curriculum_bootstrap import (
 )
 from learning_agent.errors import LearningAgentError
 from learning_agent.models import ObservationRecord, ReflectionRecord
+from learning_agent.providers.anthropic_provider import AnthropicProvider
+from learning_agent.providers.openai_provider import OpenAIProvider
 from learning_agent.ui import DEFAULT_UI_HOST, DEFAULT_UI_PORT, serve_ui
 
 
@@ -222,6 +225,54 @@ def learn_generate_command() -> None:
                 f"- {question.id} [{question.depth}] "
                 f"{question.prompt_text}"
             )
+    except LearningAgentError as exc:
+        exit_on_error(exc)
+
+
+@learn_app.command("compare-models")
+def learn_compare_models_command(
+    gpt_model: str = typer.Option(
+        "",
+        help="OpenAI model name for the GPT comparison pass. Defaults to the configured OpenAI model or `gpt-4o`.",
+    ),
+    claude_model: str = typer.Option(
+        DEFAULT_ANTHROPIC_MODEL,
+        help="Anthropic model name for the Claude comparison pass.",
+    ),
+    output_dir: str = typer.Option(
+        "tmp/learning_compare",
+        help="Repo-relative directory where comparison artifacts will be written.",
+    ),
+) -> None:
+    try:
+        controller = get_controller()
+        configured_model = controller.config.model.strip()
+        resolved_gpt_model = (
+            gpt_model.strip()
+            or (configured_model if controller.config.provider == "openai" and configured_model else "gpt-4o")
+        )
+        resolved_claude_model = (
+            claude_model.strip()
+            or (configured_model if controller.config.provider == "anthropic" and configured_model else DEFAULT_ANTHROPIC_MODEL)
+        )
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        comparison_root = (controller.repo_root / output_dir / timestamp).resolve()
+        result = controller.compare_learning_providers(
+            providers=[
+                ("claude", resolved_claude_model, AnthropicProvider(model=resolved_claude_model)),
+                ("gpt", resolved_gpt_model, OpenAIProvider(model=resolved_gpt_model)),
+            ],
+            output_dir=comparison_root,
+        )
+        typer.echo("Cleared existing learning/task state and downstream progress.")
+        typer.echo(f"Comparison artifacts written to {result['output_dir']}")
+        for provider_result in result["providers"]:
+            typer.echo(
+                f"- {provider_result['provider_label']} ({provider_result['model']}) [{provider_result.get('status', 'unknown')}]: "
+                f"{provider_result['output_dir']}"
+            )
+            if provider_result.get("error"):
+                typer.echo(f"  error: {provider_result['error']}")
     except LearningAgentError as exc:
         exit_on_error(exc)
 

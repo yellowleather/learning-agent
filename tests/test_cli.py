@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
@@ -149,7 +150,12 @@ def _concept_cards_for(_reading_material):
 
 
 class FakeProvider:
-    def generate_question_bank(self, week_spec, ledger_state):
+    def generate_prior_knowledge_summary(self, full_plan, target_week_number):
+        del full_plan, target_week_number
+        return "The learner has no prior knowledge of LLMs, transformers, or inference systems."
+
+    def generate_question_bank(self, week_spec, prior_knowledge_summary, ledger_state):
+        del prior_knowledge_summary, ledger_state
         questions = [
             {
                 "id": "prefill_decode_baseline",
@@ -195,7 +201,8 @@ class FakeProvider:
         )
         return LearningQuestionBankPayload(week=week_spec["number"], questions=questions)
 
-    def generate_reading_material(self, week_spec, ledger_state, questions):
+    def generate_reading_material(self, week_spec, prior_knowledge_summary, ledger_state, questions):
+        del week_spec, prior_knowledge_summary, ledger_state
         return _reading_material_for(questions)
 
     def generate_concept_cards_from_reading(self, week_spec, ledger_state, reading_material):
@@ -406,3 +413,39 @@ You can ship the system.
     )
     assert answer_result.exit_code == 0
     assert "Pass" in answer_result.stdout
+
+
+def test_learn_compare_models_writes_comparison_outputs(monkeypatch, tmp_path):
+    captured = {}
+
+    class FakeController:
+        def __init__(self):
+            self.repo_root = tmp_path
+            self.config = SimpleNamespace(provider="openai", model="gpt-4o")
+
+        def compare_learning_providers(self, providers, output_dir):
+            captured["providers"] = [(label, model, provider.__class__.__name__) for label, model, provider in providers]
+            captured["output_dir"] = output_dir
+            return {
+                "output_dir": str(output_dir),
+                "providers": [
+                    {
+                        "provider_label": label,
+                        "model": model,
+                        "output_dir": str(output_dir / label),
+                        "status": "valid",
+                    }
+                    for label, model, _provider in providers
+                ],
+            }
+
+    monkeypatch.setattr("learning_agent.cli.get_controller", lambda: FakeController())
+
+    result = runner.invoke(app, ["learn", "compare-models", "--claude-model", "claude-test"])
+
+    assert result.exit_code == 0
+    assert "Cleared existing learning/task state and downstream progress." in result.stdout
+    assert "Comparison artifacts written to" in result.stdout
+    assert "claude (claude-test)" in result.stdout
+    assert captured["providers"][0][:2] == ("claude", "claude-test")
+    assert captured["providers"][1][:2] == ("gpt", "gpt-4o")

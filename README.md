@@ -2,7 +2,7 @@
 
 `learning-agent` is a curriculum-driven CLI and local web UI for running a structured technical learning loop against a separate target repository.
 
-The current implementation is a Phase 1 single-controller system. It reads a roadmap markdown file, exposes only the current unlocked week, generates learning material and implementation tasks with an OpenAI-backed provider, records verification and observations, and blocks progression until the current week's gates are satisfied.
+The current implementation is a Phase 1 single-controller system. It reads a roadmap markdown file, exposes only the current unlocked week, generates learning material and implementation tasks with a configurable LLM provider, records verification and observations, and blocks progression until the current week's gates are satisfied.
 
 ## What It Does
 
@@ -22,7 +22,7 @@ The current implementation is a Phase 1 single-controller system. It reads a roa
 ```text
 .
 ├── learning_agent/            # Core package
-│   ├── providers/             # LLM provider abstraction + OpenAI implementation
+│   ├── providers/             # LLM provider abstraction + concrete providers
 │   ├── prompts/               # Mentor and Junior prompt templates
 │   ├── assets/                # UI assets
 │   ├── cli.py                 # Typer CLI
@@ -41,7 +41,7 @@ The current implementation is a Phase 1 single-controller system. It reads a roa
 ## Requirements
 
 - Python 3.9+
-- An OpenAI API key exposed as `OPENAI_API_KEY`
+- An LLM API key exposed as `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`, depending on provider
 - A target repository on disk
 - A roadmap markdown file that matches the parser's expected week structure
 
@@ -53,8 +53,8 @@ Current config shape:
 
 ```json
 {
-  "provider": "openai",
-  "model": "gpt-4o",
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-0",
   "roadmap_path": "ai_inference_engineering/docs/inference_engineering_8_week_plan.md",
   "target_repo_path": "ai_inference_engineering",
   "state_dir": "state"
@@ -63,13 +63,13 @@ Current config shape:
 
 Fields:
 
-- `provider`: currently only `openai`
-- `model`: chat-completions model name used by the provider
+- `provider`: `openai` or `anthropic`
+- `model`: model name used by the selected provider
 - `roadmap_path`: markdown roadmap path, relative to this repo root
 - `target_repo_path`: target repository path, relative to this repo root
 - `state_dir`: where ledger and working-state files are written
 
-You can keep `OPENAI_API_KEY` in a repo-local `.env`. The loader reads `.env` automatically and does not override an already-set environment variable.
+You can keep `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in a repo-local `.env`. The loader reads `.env` automatically and does not override an already-set environment variable.
 
 ## Quick Start
 
@@ -79,13 +79,13 @@ Create a virtual environment, install the package, set your API key, and point t
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -e '.[dev]'
-export OPENAI_API_KEY=your_key_here
+export ANTHROPIC_API_KEY=your_key_here
 ```
 
 If you prefer a repo-local `.env`:
 
 ```bash
-echo 'OPENAI_API_KEY=your_key_here' >> .env
+echo 'ANTHROPIC_API_KEY=your_key_here' >> .env
 ```
 
 Initialize the first week:

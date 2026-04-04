@@ -27,6 +27,7 @@ from learning_agent.models import (
     TopicChatTurn,
     VerificationRecord,
 )
+from learning_agent.providers.base import LLMProvider
 from learning_agent.providers.factory import get_provider
 from learning_agent.roadmap_parser import load_roadmap_dict
 from learning_agent.state import StateStore
@@ -84,39 +85,82 @@ class LearningController:
 
     def generate_learning_assist(self) -> LearningSession:
         ledger = self.state.load_ledger()
-        week_spec = self._load_current_week(ledger)
+        roadmap = self._load_roadmap()
+        week_spec = self._week_by_number(roadmap, ledger.state.current_week)
         provider = self._provider()
-        question_payload = provider.generate_question_bank(week_spec, ledger.state)
-        if not isinstance(question_payload, LearningQuestionBankPayload):
-            question_payload = LearningQuestionBankPayload.model_validate(question_payload)
-        questions = question_payload.questions
-        question_errors = self._validate_questions(questions)
-        if question_errors:
-            raise LearningAgentError("Learning Assist question bank failed validation: " + "; ".join(question_errors))
-        reading_payload = provider.generate_reading_material(week_spec, ledger.state, questions)
-        if not isinstance(reading_payload, ReadingMaterialPayload):
-            reading_payload = ReadingMaterialPayload.model_validate(reading_payload)
-        reading_material = self._normalize_reading_material(reading_payload)
-        reading_errors = self._validate_reading_material(reading_material)
-        if reading_errors:
-            raise LearningAgentError("Learning Assist reading generation failed validation: " + "; ".join(reading_errors))
-        concept_payload = provider.generate_concept_cards_from_reading(week_spec, ledger.state, reading_material)
-        if not isinstance(concept_payload, ConceptCardPayload):
-            concept_payload = ConceptCardPayload.model_validate(concept_payload)
-        concept_cards = self._normalize_concept_cards(concept_payload.concept_cards)
-        concept_errors = self._validate_concept_cards(concept_cards)
-        if concept_errors:
-            raise LearningAgentError("Learning Assist concept-card generation failed validation: " + "; ".join(concept_errors))
-        session = LearningSession(
-            week=int(week_spec["number"]),
-            concept_cards=concept_cards,
-            reading_material=reading_material,
-            questions=questions,
-        )
+        _prior_knowledge_summary, session = self._build_learning_session(provider, ledger, week_spec)
         self.state.save_learning(session)
         self._sync_learning_progress(ledger, session)
         self.state.save_ledger(ledger)
         return session
+
+    def reset_learning_pipeline(self) -> Ledger:
+        ledger = self.state.load_ledger()
+        ledger.state.gates.learning_check_passed = False
+        ledger.state.gates.implementation_complete = False
+        ledger.state.gates.verification_passed = False
+        ledger.state.gates.evidence_reliable = False
+        ledger.state.gates.week_approved = False
+        ledger.state.artifacts.completed_files = []
+        ledger.state.metrics.recorded = {}
+        ledger.state.verification = None
+        ledger.state.observation = None
+        ledger.state.reflection = None
+        self.state.save_ledger(ledger)
+        self.state.clear_ephemeral_state()
+        return ledger
+
+    def compare_learning_providers(
+        self,
+        providers: list[tuple[str, str, LLMProvider]],
+        output_dir: Path,
+    ) -> dict[str, Any]:
+        ledger = self.reset_learning_pipeline()
+        roadmap = self._load_roadmap()
+        week_spec = self._week_by_number(roadmap, ledger.state.current_week)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        results: list[dict[str, str]] = []
+        for label, model, provider in providers:
+            provider_dir = output_dir / label
+            provider_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                provider_result = self._compare_single_learning_provider(
+                    provider=provider,
+                    ledger=ledger,
+                    week_spec=week_spec,
+                    provider_label=label,
+                    model=model,
+                    output_dir=provider_dir,
+                )
+            except Exception as exc:
+                self._write_json(
+                    provider_dir / "metadata.json",
+                    {
+                        "provider_label": label,
+                        "model": model,
+                        "week": int(week_spec["number"]),
+                        "status": "error",
+                        "error": str(exc),
+                    },
+                )
+                results.append(
+                    {
+                        "provider_label": label,
+                        "model": model,
+                        "output_dir": str(provider_dir),
+                        "status": "error",
+                        "error": str(exc),
+                    }
+                )
+                continue
+            results.append(provider_result)
+
+        return {
+            "week": int(week_spec["number"]),
+            "output_dir": str(output_dir),
+            "providers": results,
+        }
 
     def answer_learning_question(self, question_id: str, answer: str):
         ledger = self.state.load_ledger()
@@ -348,6 +392,12 @@ class LearningController:
     def _load_roadmap(self) -> dict[str, Any]:
         return load_roadmap_dict(self.roadmap_path)
 
+    def _load_roadmap_markdown(self) -> str:
+        try:
+            return self.roadmap_path.read_text()
+        except FileNotFoundError as exc:
+            raise LearningAgentError(f"Roadmap file not found: {self.roadmap_path}") from exc
+
     def _curriculum_metadata(self, roadmap: dict[str, Any]) -> CurriculumMetadata:
         return CurriculumMetadata(
             title=str(roadmap["title"]),
@@ -367,6 +417,128 @@ class LearningController:
 
     def _provider(self):
         return get_provider(self.config)
+
+    def _build_learning_session(
+        self,
+        provider: LLMProvider,
+        ledger: Ledger,
+        week_spec: dict[str, Any],
+    ) -> tuple[str, LearningSession]:
+        prior_knowledge_summary = provider.generate_prior_knowledge_summary(
+            full_plan=self._load_roadmap_markdown(),
+            target_week_number=int(week_spec["number"]),
+        )
+        question_payload = provider.generate_question_bank(week_spec, prior_knowledge_summary, ledger.state)
+        if not isinstance(question_payload, LearningQuestionBankPayload):
+            question_payload = LearningQuestionBankPayload.model_validate(question_payload)
+        questions = question_payload.questions
+        question_errors = self._validate_questions(questions)
+        if question_errors:
+            raise LearningAgentError("Learning Assist question bank failed validation: " + "; ".join(question_errors))
+
+        reading_payload = provider.generate_reading_material(week_spec, prior_knowledge_summary, ledger.state, questions)
+        if not isinstance(reading_payload, ReadingMaterialPayload):
+            reading_payload = ReadingMaterialPayload.model_validate(reading_payload)
+        reading_material = self._normalize_reading_material(reading_payload)
+        reading_errors = self._validate_reading_material(reading_material)
+        if reading_errors:
+            raise LearningAgentError("Learning Assist reading generation failed validation: " + "; ".join(reading_errors))
+
+        concept_payload = provider.generate_concept_cards_from_reading(week_spec, ledger.state, reading_material)
+        if not isinstance(concept_payload, ConceptCardPayload):
+            concept_payload = ConceptCardPayload.model_validate(concept_payload)
+        concept_cards = self._normalize_concept_cards(concept_payload.concept_cards)
+        concept_errors = self._validate_concept_cards(concept_cards)
+        if concept_errors:
+            raise LearningAgentError("Learning Assist concept-card generation failed validation: " + "; ".join(concept_errors))
+
+        session = LearningSession(
+            week=int(week_spec["number"]),
+            concept_cards=concept_cards,
+            reading_material=reading_material,
+            questions=questions,
+        )
+        return prior_knowledge_summary, session
+
+    def _compare_single_learning_provider(
+        self,
+        *,
+        provider: LLMProvider,
+        ledger: Ledger,
+        week_spec: dict[str, Any],
+        provider_label: str,
+        model: str,
+        output_dir: Path,
+    ) -> dict[str, Any]:
+        week_number = int(week_spec["number"])
+        prior_knowledge_summary = provider.generate_prior_knowledge_summary(
+            full_plan=self._load_roadmap_markdown(),
+            target_week_number=week_number,
+        )
+        self._write_text(output_dir / "prior_knowledge_summary.txt", prior_knowledge_summary)
+
+        question_payload = provider.generate_question_bank(week_spec, prior_knowledge_summary, ledger.state)
+        if not isinstance(question_payload, LearningQuestionBankPayload):
+            question_payload = LearningQuestionBankPayload.model_validate(question_payload)
+        questions = question_payload.questions
+        question_bank_payload = LearningQuestionBankPayload(week=week_number, questions=questions)
+        self._write_json(output_dir / "question_bank.json", question_bank_payload.model_dump(mode="json"))
+
+        question_errors = self._validate_questions(questions)
+
+        reading_payload = provider.generate_reading_material(week_spec, prior_knowledge_summary, ledger.state, questions)
+        if not isinstance(reading_payload, ReadingMaterialPayload):
+            reading_payload = ReadingMaterialPayload.model_validate(reading_payload)
+        reading_material = self._normalize_reading_material(reading_payload)
+        self._write_json(output_dir / "reading_material.json", reading_material.model_dump(mode="json"))
+
+        reading_errors = self._validate_reading_material(reading_material)
+
+        concept_payload = provider.generate_concept_cards_from_reading(week_spec, ledger.state, reading_material)
+        if not isinstance(concept_payload, ConceptCardPayload):
+            concept_payload = ConceptCardPayload.model_validate(concept_payload)
+        concept_cards = self._normalize_concept_cards(concept_payload.concept_cards)
+        concept_card_payload = ConceptCardPayload(week=week_number, concept_cards=concept_cards)
+        self._write_json(output_dir / "concept_cards.json", concept_card_payload.model_dump(mode="json"))
+
+        concept_errors = self._validate_concept_cards(concept_cards)
+
+        validation_errors = {
+            "question_bank": question_errors,
+            "reading_material": reading_errors,
+            "concept_cards": concept_errors,
+        }
+        self._write_json(output_dir / "validation_errors.json", validation_errors)
+
+        is_valid = not any(validation_errors.values())
+        if is_valid:
+            session = LearningSession(
+                week=week_number,
+                concept_cards=concept_cards,
+                reading_material=reading_material,
+                questions=questions,
+            )
+            self._write_json(output_dir / "learning_session.json", session.model_dump(mode="json"))
+
+        metadata = {
+            "provider_label": provider_label,
+            "model": model,
+            "week": week_number,
+            "status": "valid" if is_valid else "invalid",
+        }
+        self._write_json(output_dir / "metadata.json", metadata)
+        return {
+            "provider_label": provider_label,
+            "model": model,
+            "output_dir": str(output_dir),
+            "status": metadata["status"],
+        }
+
+    def _write_json(self, path: Path, payload: dict[str, Any]) -> None:
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    def _write_text(self, path: Path, text: str) -> None:
+        path.write_text(text.rstrip() + "\n")
 
     def _normalize_topic_chat_reply(self, reply: str) -> str:
         text = str(reply or "").strip()

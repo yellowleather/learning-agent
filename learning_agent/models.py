@@ -10,7 +10,7 @@ class StrictModel(BaseModel):
 
 
 class AppConfig(StrictModel):
-    provider: Literal["openai"] = "openai"
+    provider: Literal["openai", "anthropic"] = "openai"
     model: str = ""
     roadmap_path: str
     target_repo_path: str

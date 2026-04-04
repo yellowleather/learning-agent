@@ -19,8 +19,15 @@ from learning_agent.models import (
 
 class LLMProvider(ABC):
     @abstractmethod
+    def generate_prior_knowledge_summary(self, full_plan: str, target_week_number: int) -> str:
+        raise NotImplementedError
+
+    @abstractmethod
     def generate_question_bank(
-        self, week_spec: dict[str, Any], ledger_state: ProgressState
+        self,
+        week_spec: dict[str, Any],
+        prior_knowledge_summary: str,
+        ledger_state: ProgressState,
     ) -> LearningQuestionBankPayload:
         raise NotImplementedError
 
@@ -28,6 +35,7 @@ class LLMProvider(ABC):
     def generate_reading_material(
         self,
         week_spec: dict[str, Any],
+        prior_knowledge_summary: str,
         ledger_state: ProgressState,
         questions: list[LearningQuestion],
     ) -> ReadingMaterialPayload:

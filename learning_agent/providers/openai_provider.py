@@ -30,15 +30,29 @@ class OpenAIProvider(LLMProvider):
     def __init__(self, model: str):
         self.model = model.strip()
 
-    def _week_context_json(self, week_spec: dict[str, Any]) -> str:
-        return json.dumps(week_spec, indent=2, sort_keys=True)
+    def generate_prior_knowledge_summary(self, full_plan: str, target_week_number: int) -> str:
+        system_prompt = load_prompt("mentor.md")
+        user_prompt = render_prompt(
+            "prior_knowledge_summary.md",
+            {
+                "FULL_PLAN": full_plan,
+                "TARGET_WEEK_NUMBER": str(target_week_number),
+            },
+        )
+        return self._completion_as_text(system_prompt, user_prompt)
 
-    def generate_question_bank(self, week_spec: dict[str, Any], ledger_state: ProgressState) -> LearningQuestionBankPayload:
+    def generate_question_bank(
+        self,
+        week_spec: dict[str, Any],
+        prior_knowledge_summary: str,
+        ledger_state: ProgressState,
+    ) -> LearningQuestionBankPayload:
         system_prompt = load_prompt("mentor.md")
         base_user_prompt = render_prompt(
-            "question_bank_user.md",
+            "question_bank.md",
             {
-                "WEEK_CONTEXT_JSON": self._week_context_json(week_spec),
+                "PRIOR_KNOWLEDGE_SUMMARY": prior_knowledge_summary,
+                "WEEK_PLAN": self._week_plan_text(week_spec),
                 "LEDGER_STATE_JSON": ledger_state.model_dump_json(indent=2),
             },
         )
@@ -47,21 +61,16 @@ class OpenAIProvider(LLMProvider):
     def generate_reading_material(
         self,
         week_spec: dict[str, Any],
+        prior_knowledge_summary: str,
         ledger_state: ProgressState,
         questions: list[LearningQuestion],
     ) -> ReadingMaterialPayload:
         system_prompt = load_prompt("mentor.md")
-        theme_hints = self._reading_theme_hints(questions)
         user_prompt = render_prompt(
-            "reading_material_user.md",
+            "reading_material.md",
             {
-                "THEME_HINTS_BLOCK": (
-                    "Recurring question themes to consider when naming the remaining markdown sections:\n"
-                    f"{json.dumps(theme_hints, indent=2)}\n\n"
-                    if theme_hints
-                    else ""
-                ),
-                "WEEK_CONTEXT_JSON": self._week_context_json(week_spec),
+                "PRIOR_KNOWLEDGE_SUMMARY": prior_knowledge_summary,
+                "WEEK_PLAN": self._week_plan_text(week_spec),
                 "LEDGER_STATE_JSON": ledger_state.model_dump_json(indent=2),
                 "QUESTION_BANK_JSON": json.dumps([question.model_dump(mode="json") for question in questions], indent=2),
             },
@@ -76,9 +85,9 @@ class OpenAIProvider(LLMProvider):
     ) -> ConceptCardPayload:
         system_prompt = load_prompt("mentor.md")
         user_prompt = render_prompt(
-            "concept_cards_from_reading_user.md",
+            "concept_cards_from_reading.md",
             {
-                "WEEK_CONTEXT_JSON": self._week_context_json(week_spec),
+                "WEEK_PLAN": self._week_plan_text(week_spec),
                 "LEDGER_STATE_JSON": ledger_state.model_dump_json(indent=2),
                 "READING_MATERIAL_JSON": reading_material.model_dump_json(indent=2),
             },
@@ -88,9 +97,9 @@ class OpenAIProvider(LLMProvider):
     def generate_task(self, week_spec: dict[str, Any], ledger_state: ProgressState) -> GeneratedTask:
         system_prompt = load_prompt("junior.md")
         user_prompt = render_prompt(
-            "generate_task_user.md",
+            "generate_task.md",
             {
-                "WEEK_CONTEXT_JSON": self._week_context_json(week_spec),
+                "WEEK_PLAN": self._week_plan_text(week_spec),
                 "LEDGER_STATE_JSON": ledger_state.model_dump_json(indent=2),
             },
         )
@@ -106,9 +115,9 @@ class OpenAIProvider(LLMProvider):
         system_prompt = load_prompt("mentor.md")
         observation_json = observation.model_dump_json(indent=2) if observation is not None else "null"
         user_prompt = render_prompt(
-            "score_learning_question_user.md",
+            "score_learning_question.md",
             {
-                "WEEK_CONTEXT_JSON": self._week_context_json(week_spec),
+                "WEEK_PLAN": self._week_plan_text(week_spec),
                 "QUESTION_JSON": question.model_dump_json(indent=2),
                 "OBSERVATION_JSON": observation_json,
                 "ANSWER": answer,
@@ -175,9 +184,9 @@ class OpenAIProvider(LLMProvider):
             history_lines.append(f"{turn.role.title()}: {turn.content}")
         history_text = "\n".join(history_lines) if history_lines else "(no prior chat)"
         user_prompt = render_prompt(
-            "topic_chat_user.md",
+            "topic_chat.md",
             {
-                "WEEK_CONTEXT_JSON": self._week_context_json(week_spec),
+                "WEEK_PLAN": self._week_plan_text(week_spec),
                 "APP_CONTEXT": context,
                 "HISTORY_TEXT": history_text,
                 "MESSAGE": message,
@@ -225,6 +234,20 @@ class OpenAIProvider(LLMProvider):
         payload = self._extract_json(content)
         payload = self._normalize_payload(payload, response_model)
         return response_model.model_validate(payload)
+
+    def _completion_as_text(self, system_prompt: str, user_prompt: str) -> str:
+        response = self._chat_completions_create(
+            model=self.model,
+            temperature=0.2,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        content = response.choices[0].message.content
+        if not content or not content.strip():
+            raise LearningAgentError("OpenAI provider returned an empty response.")
+        return content.strip()
 
     def _chat_completions_create(self, **kwargs: Any):
         client = self._client()
@@ -285,59 +308,12 @@ class OpenAIProvider(LLMProvider):
         if not isinstance(payload, dict):
             return payload
 
-        if response_model is ConceptCardPayload:
-            concept_cards = payload.get("concept_cards")
-            if isinstance(concept_cards, list):
-                payload = dict(payload)
-                payload["concept_cards"] = [self._normalize_concept_card(card) for card in concept_cards]
-            return payload
-
         if response_model is LearningQuestionBankPayload:
             questions = payload.get("questions")
             if isinstance(questions, list):
                 payload = dict(payload)
                 payload["questions"] = [self._normalize_question(question) for question in questions]
         return payload
-
-    def _reading_theme_hints(self, questions: list[LearningQuestion]) -> list[str]:
-        counts: dict[str, int] = {}
-        labels: dict[str, str] = {}
-        for question in questions:
-            for raw_hint in self._question_theme_candidates(question):
-                key = self._slugify_hint(raw_hint)
-                if not key:
-                    continue
-                counts[key] = counts.get(key, 0) + 1
-                labels.setdefault(key, self._humanize_hint(raw_hint))
-        ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-        return [labels[key] for key, _count in ranked[:8]]
-
-    def _question_theme_candidates(self, question: LearningQuestion) -> list[str]:
-        return [token for token in question.prompt_text.split()[:4] if len(token) >= 4]
-
-    def _slugify_hint(self, value: str) -> str:
-        return "".join(char.lower() if char.isalnum() else "-" for char in value).strip("-")
-
-    def _humanize_hint(self, value: str) -> str:
-        text = value.replace("_", " ").replace("-", " ").replace("/", " ").strip()
-        return " ".join(part.capitalize() for part in text.split())
-
-    def _normalize_concept_card(self, card: Any) -> Any:
-        if not isinstance(card, dict):
-            return card
-
-        normalized = dict(card)
-        if "why_it_matters" not in normalized and isinstance(normalized.get("why"), str):
-            normalized["why_it_matters"] = normalized["why"]
-        if "common_mistake" not in normalized and isinstance(normalized.get("mistake"), str):
-            normalized["common_mistake"] = normalized["mistake"]
-        if "quick_check_question" not in normalized:
-            for key in ("quick_check", "quick_check_prompt"):
-                value = normalized.get(key)
-                if isinstance(value, str):
-                    normalized["quick_check_question"] = value
-                    break
-        return normalized
 
     def _normalize_question(self, question: Any) -> Any:
         if not isinstance(question, dict):
@@ -362,3 +338,50 @@ class OpenAIProvider(LLMProvider):
         if any(token in normalized for token in {"stretch", "advanced", "expert"}):
             return "stretch"
         return "deep"
+
+    def _week_plan_text(self, week_spec: dict[str, Any]) -> str:
+        lines = [
+            f"Week {week_spec['number']}: {week_spec['short_title']}",
+            "",
+            "Goal:",
+            str(week_spec.get("goal") or "").strip(),
+            "",
+            "Narrative:",
+            str(week_spec.get("narrative") or "").strip(),
+            "",
+            "Topics Covered:",
+            *self._bullet_lines(week_spec.get("topics_covered", [])),
+            "",
+            "By the End of This Week You Will Be Able To:",
+            *self._bullet_lines(week_spec.get("by_the_end_of_this_week_you_will_be_able_to", [])),
+            "",
+            "Assessment Targets:",
+            *self._numbered_lines(week_spec.get("assessment_targets", [])),
+            "",
+            "Implementation Tasks:",
+            *self._bullet_lines(week_spec.get("tasks", [])),
+            "",
+            "Deliverable Paths:",
+            *self._bullet_lines(week_spec.get("deliverable_paths", [])),
+            "",
+            "Required Files:",
+            *self._bullet_lines(week_spec.get("required_files", [])),
+            "",
+            "Active Directories:",
+            *self._bullet_lines(week_spec.get("active_dirs", [])),
+            "",
+            "Required Metrics:",
+            *self._bullet_lines(week_spec.get("required_metrics", [])),
+            "",
+            "Key Resources:",
+            *self._bullet_lines(week_spec.get("key_resources", [])),
+        ]
+        return "\n".join(lines).strip()
+
+    def _bullet_lines(self, values: Any) -> list[str]:
+        items = [str(value).strip() for value in (values or []) if str(value).strip()]
+        return [f"- {item}" for item in items] or ["- (none)"]
+
+    def _numbered_lines(self, values: Any) -> list[str]:
+        items = [str(value).strip() for value in (values or []) if str(value).strip()]
+        return [f"{index}. {item}" for index, item in enumerate(items, start=1)] or ["1. (none)"]
