@@ -313,6 +313,7 @@ def render_page(
     error: Optional[str] = None,
     selected_question_id: Optional[str] = None,
 ) -> str:
+    course_total_weeks = resolve_course_total_weeks()
     try:
         status = get_controller().status()
         initialized = True
@@ -3135,7 +3136,7 @@ def render_page(
       <div class="panel-resizer-v3" data-panel-resizer="left" aria-hidden="true"></div>
       <div class="workspace-main-v3">
         {render_notice(message, error)}
-        {render_header(status, initialized)}
+      {render_header(status, initialized, course_total_weeks)}
         {render_info_sections(initialized)}
         {render_body(status, initialized, selected_question_id=selected_question_id)}
       </div>
@@ -3221,7 +3222,7 @@ def compact_week_title(title: str) -> str:
     return title
 
 
-def render_header(status: Optional[dict], initialized: bool) -> str:
+def render_header(status: Optional[dict], initialized: bool, course_total_weeks: int) -> str:
     current_step = current_workflow_step(status) if initialized and status else None
     current_label = workflow_label(current_step) if current_step else "Set Up"
     return f"""
@@ -3233,7 +3234,7 @@ def render_header(status: Optional[dict], initialized: bool) -> str:
         </div>
         {render_primary_action(status, initialized)}
       </div>
-      {render_marathon_strip(status, initialized, current_step, current_label)}
+      {render_marathon_strip(status, initialized, current_step, current_label, course_total_weeks)}
       <div class="workspace-meta-row">
         <span class="workspace-environment-note-v3">localhost:{DEFAULT_UI_PORT}</span>
       </div>
@@ -3246,8 +3247,9 @@ def render_marathon_strip(
     initialized: bool,
     current_step: Optional[str],
     current_label: str,
+    course_total_weeks: int,
 ) -> str:
-    total_weeks = marathon_total_weeks(status)
+    total_weeks = marathon_total_weeks(status, course_total_weeks)
     runner_percent = marathon_runner_percent(status, initialized, total_weeks)
     base_margin_percent = 100 / (total_weeks + 3)
     outer_margin_percent = base_margin_percent / 2
@@ -3329,9 +3331,16 @@ def render_marathon_strip(
     """
 
 
-def marathon_total_weeks(status: Optional[dict]) -> int:
-    total_weeks = int((status or {}).get("total_weeks") or DEFAULT_COURSE_WEEKS)
-    return max(DEFAULT_COURSE_WEEKS, total_weeks)
+def marathon_total_weeks(status: Optional[dict], course_total_weeks: Optional[int] = None) -> int:
+    total_weeks = int((status or {}).get("total_weeks") or course_total_weeks or DEFAULT_COURSE_WEEKS)
+    return max(1, total_weeks)
+
+
+def resolve_course_total_weeks() -> int:
+    try:
+        return max(1, int(get_controller().curriculum_metadata().total_weeks))
+    except LearningAgentError:
+        return DEFAULT_COURSE_WEEKS
 
 
 def marathon_runner_percent(status: Optional[dict], initialized: bool, total_weeks: int) -> float:

@@ -202,6 +202,47 @@ def test_load_roadmap_dict_returns_full_plan_shape(tmp_path):
     assert roadmap_dict["capstone_summary"]["artifacts_built"][0]["artifact"] == "Final artifact"
 
 
+def test_load_curriculum_accepts_shorter_curriculum(tmp_path):
+    roadmap = tmp_path / "docs" / "plan.md"
+    roadmap.parent.mkdir(parents=True, exist_ok=True)
+    roadmap.write_text(
+        "# 3-Week Inference Engineering Roadmap\n\n"
+        "## Overview\n\n"
+        "Overview text.\n\n"
+        "## Repository Structure\n\n"
+        "```\n"
+        "inference/\n"
+        "├── server/\n"
+        "└── docs/\n"
+        "```\n\n"
+        "Repository description.\n\n"
+        + "\n\n".join(
+            build_week(
+                week_number,
+                f"Week Title {week_number}",
+                f"Goal {week_number}.",
+                [f"concept {week_number}"],
+                [(f"server/week_{week_number}.py", f"Implementation file {week_number}.")],
+                f"A report in `docs/week_{week_number}.md`.",
+            )
+            for week_number in range(1, 4)
+        )
+        + "\n\n## Capstone Summary\n\n"
+        "### Artifacts Built\n\n"
+        "| Artifact | Location | Description |\n"
+        "|---|---|---|\n"
+        "| Final artifact | `server/week_1.py` | Example |\n\n"
+        "### What You Can Now Do\n\n"
+        "You can ship the system.\n"
+    )
+
+    metadata, weeks = load_curriculum(roadmap, "ai_inference_engineering")
+
+    assert metadata.total_weeks == 3
+    assert len(weeks) == 3
+    assert get_week_spec(weeks, 3).title == "Week Title 3"
+
+
 def test_load_roadmap_dict_validates_required_subsections(tmp_path):
     roadmap = tmp_path / "docs" / "plan.md"
     roadmap.parent.mkdir(parents=True, exist_ok=True)

@@ -54,8 +54,8 @@ def parse_roadmap_markdown(raw: str) -> dict[str, Any]:
         raise LearningAgentError("Roadmap markdown must contain a non-empty `## Capstone Summary` section.")
 
     week_sections = [(heading, body) for heading, body in top_sections if heading.startswith("Week ")]
-    if len(week_sections) != 8:
-        raise LearningAgentError(f"Roadmap markdown must contain exactly 8 weeks; found {len(week_sections)}.")
+    if not week_sections:
+        raise LearningAgentError("Roadmap markdown must contain at least one week section.")
 
     weeks: list[dict[str, Any]] = []
     for expected_number, (heading, body) in enumerate(week_sections, start=1):

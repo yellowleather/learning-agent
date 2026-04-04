@@ -4,9 +4,9 @@ from learning_agent.errors import LearningAgentError
 from learning_agent.ui import format_resource_text_html, render_markdown_block, render_page, run_action, run_topic_chat, run_topic_chat_stream
 
 
-def _extra_weeks(start: int = 2) -> str:
+def _extra_weeks(start: int = 2, end: int = 8) -> str:
     blocks = []
-    for week_number in range(start, 9):
+    for week_number in range(start, end + 1):
         blocks.append(
             f"""## Week {week_number}: Extra Week {week_number}
 
@@ -265,11 +265,11 @@ def write_config(tmp_path):
     (tmp_path / "learning_agent.config.json").write_text(json.dumps(config))
 
 
-def write_roadmap(tmp_path):
+def write_roadmap(tmp_path, total_weeks: int = 8):
     roadmap = tmp_path / "docs" / "plan.md"
     roadmap.parent.mkdir(parents=True, exist_ok=True)
     roadmap.write_text(
-        f"""# 8-Week Inference Engineering Roadmap
+        f"""# {total_weeks}-Week Inference Engineering Roadmap
 
 ## Overview
 
@@ -324,7 +324,7 @@ This week establishes the baseline serving path and the first performance measur
 - **Example resource.**
 - Production reference in `simple_server/server.py`.
 
-{_extra_weeks()}
+{_extra_weeks(end=total_weeks)}
 
 ## Capstone Summary
 
@@ -391,6 +391,18 @@ def test_render_page_shows_uninitialized_state(monkeypatch, tmp_path):
     assert "data-topic-chat-suggestion" in page
     assert "How It Works" not in page
     assert "What You Will See" not in page
+
+
+def test_render_page_uses_curriculum_length_before_initialization(monkeypatch, tmp_path):
+    write_config(tmp_path)
+    write_roadmap(tmp_path, total_weeks=5)
+    monkeypatch.chdir(tmp_path)
+
+    page = render_page()
+
+    assert "The 5-Week AI Engineering Marathon" in page
+    assert "Week 5" in page
+    assert "Week 8" not in page
 
 
 def test_run_action_init_creates_week_one(monkeypatch, tmp_path):
@@ -516,6 +528,23 @@ def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
     assert "learning-agent-draft-week-" in page
     assert "Concept Cards" in page
     assert "Reading Material" in page
+
+
+def test_render_page_uses_curriculum_length_after_initialization(monkeypatch, tmp_path):
+    write_config(tmp_path)
+    write_roadmap(tmp_path, total_weeks=5)
+    (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: FakeProvider())
+
+    assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
+
+    page = render_page()
+
+    assert "The 5-Week AI Engineering Marathon" in page
+    assert "Week 5" in page
+    assert "Week 8" not in page
 
 
 def test_render_markdown_block_renders_fenced_code_blocks():

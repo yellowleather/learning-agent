@@ -47,6 +47,10 @@ class LearningController:
         week_one = self._week_by_number(roadmap, 1)
         return self.state.initialize_ledger(metadata, week_one)
 
+    def curriculum_metadata(self) -> CurriculumMetadata:
+        roadmap = self._load_roadmap()
+        return self._curriculum_metadata(roadmap)
+
     def status(self) -> Dict[str, Any]:
         ledger = self.state.load_ledger()
         week_spec = self._load_current_week(ledger)

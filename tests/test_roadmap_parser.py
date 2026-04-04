@@ -44,7 +44,7 @@ Narrative {number}.
 """
 
 
-def write_full_roadmap(path: Path) -> None:
+def write_full_roadmap(path: Path, total_weeks: int = 8) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         "# 8-Week Inference Engineering Roadmap\n\n"
@@ -57,7 +57,7 @@ def write_full_roadmap(path: Path) -> None:
         "└── docs/\n"
         "```\n\n"
         "Repository description.\n\n"
-        + "\n\n".join(build_week(week_number) for week_number in range(1, 9))
+        + "\n\n".join(build_week(week_number) for week_number in range(1, total_weeks + 1))
         + "\n\n## Capstone Summary\n\n"
         "### Artifacts Built\n\n"
         "| Artifact | Location | Description |\n"
@@ -82,6 +82,16 @@ def test_load_roadmap_dict_parses_full_plan(tmp_path):
     assert parsed["weeks"][0]["implementation"]["files"][0]["path"] == "server/week_1.py"
     assert parsed["weeks"][0]["required_files"] == ["server/week_1.py", "docs/week_1.md"]
     assert parsed["capstone_summary"]["artifacts_built"][0]["artifact"] == "Final artifact"
+
+
+def test_load_roadmap_dict_accepts_non_eight_week_curriculum(tmp_path):
+    roadmap = tmp_path / "docs" / "plan.md"
+    write_full_roadmap(roadmap, total_weeks=3)
+
+    parsed = load_roadmap_dict(roadmap)
+
+    assert len(parsed["weeks"]) == 3
+    assert parsed["weeks"][-1]["title"] == "Week 3: Week Title 3"
 
 
 def test_load_roadmap_dict_ignores_thematic_break_after_key_resources(tmp_path):
