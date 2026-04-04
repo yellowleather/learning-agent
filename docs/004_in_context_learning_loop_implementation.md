@@ -46,8 +46,14 @@ learning_agent/
 │   ├── factory.py
 │   └── openai_provider.py
 ├── prompts/
+│   ├── concept_cards_from_reading_user.md
+│   ├── generate_task_user.md
 │   ├── junior.md
-│   └── mentor.md
+│   ├── question_bank_user.md
+│   ├── reading_material_user.md
+│   ├── score_learning_question_user.md
+│   ├── mentor.md
+│   └── topic_chat_user.md
 ├── cli.py
 ├── controller.py
 ├── models.py
@@ -63,6 +69,8 @@ The most relevant files are:
 - [learning_agent/controller.py](/Users/prakhar/learning_agent/learning_agent/controller.py)
 - [learning_agent/providers/base.py](/Users/prakhar/learning_agent/learning_agent/providers/base.py)
 - [learning_agent/providers/openai_provider.py](/Users/prakhar/learning_agent/learning_agent/providers/openai_provider.py)
+- [learning_agent/prompts/](/Users/prakhar/learning_agent/learning_agent/prompts)
+- [learning_agent/prompts.py](/Users/prakhar/learning_agent/learning_agent/prompts.py)
 - [learning_agent/cli.py](/Users/prakhar/learning_agent/learning_agent/cli.py)
 - [learning_agent/ui.py](/Users/prakhar/learning_agent/learning_agent/ui.py)
 
@@ -72,6 +80,8 @@ The most relevant files are:
 
 The implementation uses these main data structures in [learning_agent/models.py](/Users/prakhar/learning_agent/learning_agent/models.py):
 
+- `ProgressState`
+- `Ledger`
 - `LearningQuestion`
 - `LearningQuestionBankPayload`
 - `QuestionScore`
@@ -85,11 +95,14 @@ The implementation uses these main data structures in [learning_agent/models.py]
 - `ObservationRecord`
 - `ReflectionRecord`
 - `CheckpointState`
+- `GeneratedTask`
 - `TaskSession`
 
 Important relationships in the current implementation:
 
 - `LearningSession` stores the current week's concept cards, reading material, questions, and attempts.
+- `ProgressState.active_dirs` stores the persisted week scope copied from the roadmap.
+- `GeneratedTask.allowed_dirs` is returned by task generation and surfaced in the UI as implementation guidance.
 
 The week-level ledger state also includes:
 
@@ -182,6 +195,12 @@ The ledger looks roughly like this:
 }
 ```
 
+Important note about `active_dirs`:
+
+- it is derived from the current week's roadmap deliverable paths and persisted in the ledger,
+- it is surfaced through `status()` and passed into task-generation context,
+- it is not currently enforced as a hard path-level write guard by the controller.
+
 ## 6. Controller Flow
 
 The orchestration entrypoint is:
@@ -239,7 +258,7 @@ The implemented week flow is:
 5. generate the Junior SWE task,
 6. build the required files in the target repo,
 7. sync artifacts and record verification,
-8. record required metrics,
+8. record required metrics directly or populate `latency_p95` / `tokens_per_sec` through structured observation,
 9. record a structured observation,
 10. record a reflection,
 11. approve the week only after all blockers are cleared,
@@ -273,22 +292,36 @@ The current implementation is:
 
 ### 7.1 Prompt Sources
 
-The two prompt files are:
+Learning-loop prompt assets now live under:
+
+- [learning_agent/prompts/](/Users/prakhar/learning_agent/learning_agent/prompts)
+
+The current prompt files are:
 
 - [learning_agent/prompts/mentor.md](/Users/prakhar/learning_agent/learning_agent/prompts/mentor.md)
 - [learning_agent/prompts/junior.md](/Users/prakhar/learning_agent/learning_agent/prompts/junior.md)
+- [learning_agent/prompts/question_bank_user.md](/Users/prakhar/learning_agent/learning_agent/prompts/question_bank_user.md)
+- [learning_agent/prompts/reading_material_user.md](/Users/prakhar/learning_agent/learning_agent/prompts/reading_material_user.md)
+- [learning_agent/prompts/concept_cards_from_reading_user.md](/Users/prakhar/learning_agent/learning_agent/prompts/concept_cards_from_reading_user.md)
+- [learning_agent/prompts/generate_task_user.md](/Users/prakhar/learning_agent/learning_agent/prompts/generate_task_user.md)
+- [learning_agent/prompts/score_learning_question_user.md](/Users/prakhar/learning_agent/learning_agent/prompts/score_learning_question_user.md)
+- [learning_agent/prompts/topic_chat_user.md](/Users/prakhar/learning_agent/learning_agent/prompts/topic_chat_user.md)
 
-The Mentor prompt is used for:
+Prompt loading and placeholder rendering live in:
 
-- question-bank generation,
-- reading-material generation,
-- concept-card generation from reading,
-- per-question scoring,
-- topic-chat responses.
+- [learning_agent/prompts.py](/Users/prakhar/learning_agent/learning_agent/prompts.py)
 
-The Junior prompt is used for:
+The prompt split is:
 
-- current-week implementation task generation.
+- `mentor.md` for the Mentor system persona,
+- `junior.md` for the Junior SWE system persona,
+- file-backed user/task templates for question-bank generation, reading generation, concept-card generation, task generation, answer scoring, and topic chat.
+
+The curriculum bootstrap prompt remains separate under:
+
+- [curriculum_generation/prompts/ai_inference_engineering_8_week_plan.md](/Users/prakhar/learning_agent/curriculum_generation/prompts/ai_inference_engineering_8_week_plan.md)
+
+That prompt is not part of the runtime learning loop itself.
 
 ### 7.2 Generation Strategy
 
@@ -306,12 +339,12 @@ Specifically:
 
 The important implementation detail is that generation is constrained by:
 
-- current `WeekSpec`
+- the current week roadmap dict loaded by the controller (`week_spec` at runtime),
 - current `ProgressState`
 - fixed response schemas
 - controller-side validation and normalization
 
-The provider does not receive future weeks unless the controller passes them in.
+The provider does not receive future weeks unless the controller passes them in. In the current implementation, `_load_current_week()` loads exactly one week from the roadmap before each generation or scoring call.
 
 ### 7.3 Current Prompting Shape
 
@@ -322,6 +355,8 @@ The implementation no longer uses a single generic Learning Assist prompt. It no
 3. concept-card generation,
 4. answer scoring,
 5. topic chat.
+
+These are now file-backed prompt templates rendered through `render_prompt()` rather than long inline strings in `openai_provider.py`.
 
 The question-generation prompt currently looks roughly like:
 
@@ -413,11 +448,11 @@ In the current UI:
 
 The current UI supports:
 
-- Learning Assist visibility toggle,
-- reading-section display,
+- automatic Learning Assist loading through `ensure_learning_assist()` when possible,
+- reading material display,
 - concept-card display,
-- question-bank display,
 - question answering,
+- question navigation with a full-question-list modal,
 - task generation,
 - artifact sync,
 - metric recording,
@@ -426,7 +461,7 @@ The current UI supports:
 - verification entry,
 - checkpoint rendering,
 - approval blocker rendering,
-- week-scoped topic chat through `/api/topic-chat`.
+- browser-local multi-session week-scoped topic chat through `/api/topic-chat`.
 
 The current UI does **not** persist chat server-side. Chat sessions stay local to the browser for the active week.
 
@@ -464,6 +499,7 @@ That means:
 - question-bank quality is still model-driven,
 - reading and card quality are still model-driven,
 - depth balancing is validated against heuristics rather than curriculum-authored quotas,
+- reading-material and concept-card validation are mostly structural and stylistic, not deep semantic verification,
 - the assembled learning bundle is not fully deterministic.
 
 ### 10.4 UI / CLI Parity
@@ -495,9 +531,10 @@ The most sensible next improvements are:
 1. add curriculum-authored quotas or requirements for conceptual coverage instead of the current all-baseline heuristic,
 2. decide whether evidence-question answering should remain optional or become part of approval,
 3. strengthen structured observation validation and artifact existence checks,
-4. align CLI `init` behavior with the UI's Learning Assist auto-load behavior,
-5. allow curriculum-authored checkpoint hints when heuristic derivation is insufficient,
-6. decide whether topic-chat state should remain browser-local or become durable app state.
+4. decide whether `active_dirs` should remain guidance-only or become hard path-level enforcement,
+5. align CLI `init` behavior with the UI's Learning Assist auto-load behavior,
+6. allow curriculum-authored checkpoint hints when heuristic derivation is insufficient,
+7. decide whether topic-chat state should remain browser-local or become durable app state.
 
 ## 12. Summary
 
@@ -509,7 +546,6 @@ The current implementation adds:
 - on-platform reading material and concept cards,
 - typed question-bank generation and scoring,
 - structured observation and reflection capture,
-- evidence-based follow-up questioning,
 - explicit evidence-reliability gating,
 - CLI and UI support for the full loop,
 - a week-scoped Assistant/topic-chat surface in the UI.
