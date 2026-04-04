@@ -84,6 +84,16 @@ def test_load_roadmap_dict_parses_full_plan(tmp_path):
     assert parsed["capstone_summary"]["artifacts_built"][0]["artifact"] == "Final artifact"
 
 
+def test_load_roadmap_dict_ignores_thematic_break_after_key_resources(tmp_path):
+    roadmap = tmp_path / "docs" / "plan.md"
+    write_full_roadmap(roadmap)
+    roadmap.write_text(roadmap.read_text().replace("### Key Resources\n\n- Resource 1.\n", "### Key Resources\n\n- Resource 1.\n\n---\n"))
+
+    parsed = load_roadmap_dict(roadmap)
+
+    assert parsed["weeks"][0]["key_resources"] == ["Resource 1."]
+
+
 def test_load_roadmap_dict_rejects_missing_required_week_subsection(tmp_path):
     roadmap = tmp_path / "docs" / "plan.md"
     roadmap.parent.mkdir(parents=True, exist_ok=True)

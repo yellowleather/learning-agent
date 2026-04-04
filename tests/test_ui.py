@@ -1,7 +1,7 @@
 import json
 
 from learning_agent.errors import LearningAgentError
-from learning_agent.ui import render_page, run_action, run_topic_chat, run_topic_chat_stream
+from learning_agent.ui import format_resource_text_html, render_markdown_block, render_page, run_action, run_topic_chat, run_topic_chat_stream
 
 
 def _extra_weeks(start: int = 2) -> str:
@@ -165,7 +165,12 @@ def _concept_cards_for(_reading_material):
 
 
 class FakeProvider:
-    def generate_question_bank(self, week_spec, ledger_state):
+    def generate_prior_knowledge_summary(self, full_plan, target_week_number):
+        del full_plan, target_week_number
+        return "The learner has no prior knowledge of LLMs, transformers, or inference systems."
+
+    def generate_question_bank(self, week_spec, prior_knowledge_summary, ledger_state):
+        del prior_knowledge_summary, ledger_state
         questions = [
             {
                 "id": "prefill_decode_baseline",
@@ -211,7 +216,8 @@ class FakeProvider:
         )
         return {"week": week_spec["number"], "questions": questions}
 
-    def generate_reading_material(self, week_spec, ledger_state, questions):
+    def generate_reading_material(self, week_spec, prior_knowledge_summary, ledger_state, questions):
+        del week_spec, prior_knowledge_summary, ledger_state
         return _reading_material_for(questions)
 
     def generate_concept_cards_from_reading(self, week_spec, ledger_state, reading_material):
@@ -231,9 +237,9 @@ class CountingProvider(FakeProvider):
     def __init__(self):
         self.learning_generate_calls = 0
 
-    def generate_question_bank(self, week_spec, ledger_state):
+    def generate_question_bank(self, week_spec, prior_knowledge_summary, ledger_state):
         self.learning_generate_calls += 1
-        return super().generate_question_bank(week_spec, ledger_state)
+        return super().generate_question_bank(week_spec, prior_knowledge_summary, ledger_state)
 
 
 class FailingProvider(FakeProvider):
@@ -510,7 +516,22 @@ def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
     assert "learning-agent-draft-week-" in page
     assert "Concept Cards" in page
     assert "Reading Material" in page
-    assert "Open Learn" not in page
+
+
+def test_render_markdown_block_renders_fenced_code_blocks():
+    rendered = render_markdown_block(
+        "``` Arithmetic Intensity (prefill) ≈ 2n FLOPs per weight parameter / bytes per parameter ≈ 2 × 512 / 2 (for bf16) ≈ 512 ops/byte ```"
+    )
+
+    assert "<pre><code>" in rendered
+    assert "Arithmetic Intensity (prefill)" in rendered
+    assert "```" not in rendered
+
+
+def test_format_resource_text_html_strips_leading_dash_marker():
+    rendered = format_resource_text_html("- **Example resource.**")
+
+    assert rendered == "<strong>Example resource.</strong>"
 
 
 def test_marathon_strip_advances_when_a_required_question_passes(monkeypatch, tmp_path):

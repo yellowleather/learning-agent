@@ -307,6 +307,8 @@ def extract_bullets(section_text: str) -> list[str]:
     items: list[str] = []
     for line in section_text.splitlines():
         stripped = line.strip()
+        if is_markdown_thematic_break(stripped):
+            continue
         if stripped.startswith("-"):
             items.append(stripped[1:].strip())
     return items
@@ -374,6 +376,10 @@ def derive_required_metrics(tasks: list[str], implementation_text: str) -> list[
 
 def collapse_whitespace(text: str) -> str:
     return " ".join(text.split())
+
+
+def is_markdown_thematic_break(line: str) -> bool:
+    return bool(re.fullmatch(r"([-*_])\1{2,}", line))
 
 
 def dedupe_preserving_order(items: list[str]) -> list[str]:

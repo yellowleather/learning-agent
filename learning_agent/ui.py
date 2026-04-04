@@ -1157,6 +1157,33 @@ def render_page(
     .rendered-markdown ul {{
       padding-left: 18px;
     }}
+    .rendered-markdown pre {{
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: 16px;
+      overflow-x: auto;
+      background: rgba(17, 24, 39, 0.96);
+      color: rgba(244, 247, 250, 0.96);
+      border: 1px solid rgba(110, 127, 141, 0.55);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }}
+    .rendered-markdown pre code {{
+      display: block;
+      font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+      font-size: 0.9rem;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }}
+    .rendered-markdown p code,
+    .rendered-markdown li code {{
+      padding: 0.08rem 0.34rem;
+      border-radius: 6px;
+      background: rgba(19, 79, 114, 0.1);
+      color: var(--accent-dark);
+      font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+      font-size: 0.92em;
+    }}
     .question-column {{
       display: grid;
       gap: 14px;
@@ -2791,12 +2818,25 @@ def render_page(
       font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
       font-size: 0.92rem;
     }}
+    .resource-list-v3 {{
+      display: block;
+      padding-left: 20px;
+      list-style: disc;
+    }}
     .deliverable-item-v3, .metric-item-v3, .resource-item-v3 {{
       display: flex;
       justify-content: space-between;
       gap: 12px;
       align-items: center;
       min-height: 34px;
+    }}
+    .resource-item-v3 {{
+      display: list-item;
+      min-height: 0;
+      margin: 0 0 8px;
+    }}
+    .resource-item-v3:last-child {{
+      margin-bottom: 0;
     }}
     .sidebar-status-v3 {{
       display: inline-flex;
@@ -3125,8 +3165,12 @@ def suppress_autoload_error(exc: Exception) -> bool:
     message = str(exc)
     suppressed_prefixes = (
         "OPENAI_API_KEY must be set",
+        "ANTHROPIC_API_KEY must be set",
         "Config field `model` must be set",
         "The `openai` package is not installed.",
+        "Anthropic authentication failed.",
+        "Anthropic connection failed.",
+        "Anthropic request timed out.",
     )
     suppressed_types = {"APIConnectionError", "APITimeoutError", "ConnectError", "TimeoutException"}
     return any(message.startswith(prefix) for prefix in suppressed_prefixes) or exc.__class__.__name__ in suppressed_types
@@ -5691,7 +5735,10 @@ def render_additional_resources_panel(status: dict, classes: str) -> str:
 
 
 def format_resource_text_html(text: str) -> str:
-    formatted = escape(text)
+    normalized = text.strip()
+    if normalized.startswith("- "):
+        normalized = normalized[2:].strip()
+    formatted = escape(normalized)
     formatted = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", formatted)
     formatted = re.sub(r"`([^`]+)`", r"<code>\1</code>", formatted)
     return formatted
@@ -6603,6 +6650,8 @@ def render_markdown_block(text: str) -> str:
     chunks: list[str] = []
     list_items: list[str] = []
     paragraph_lines: list[str] = []
+    code_lines: list[str] = []
+    in_code_block = False
 
     def flush_paragraph() -> None:
         if not paragraph_lines:
@@ -6617,8 +6666,34 @@ def render_markdown_block(text: str) -> str:
         chunks.append(f"<ul>{items}</ul>")
         list_items.clear()
 
+    def flush_code_block() -> None:
+        nonlocal in_code_block
+        if not code_lines:
+            in_code_block = False
+            return
+        chunks.append(f"<pre><code>{escape(chr(10).join(code_lines))}</code></pre>")
+        code_lines.clear()
+        in_code_block = False
+
     for raw_line in lines:
         line = raw_line.strip()
+        if in_code_block:
+            if line.startswith("```"):
+                flush_code_block()
+            else:
+                code_lines.append(raw_line.rstrip())
+            continue
+        if line.startswith("```") and line.endswith("```") and len(line) > 6:
+            flush_paragraph()
+            flush_list()
+            chunks.append(f"<pre><code>{escape(line[3:-3].strip())}</code></pre>")
+            continue
+        if line.startswith("```"):
+            flush_paragraph()
+            flush_list()
+            in_code_block = True
+            code_lines.clear()
+            continue
         if not line:
             flush_paragraph()
             flush_list()
@@ -6647,11 +6722,13 @@ def render_markdown_block(text: str) -> str:
 
     flush_paragraph()
     flush_list()
+    flush_code_block()
     return f"<div class='rendered-markdown'>{''.join(chunks)}</div>"
 
 
 def render_inline_markup(text: str) -> str:
     escaped = escape(text)
+    escaped = re.sub(r"`([^`]+)`", r"<code>\1</code>", escaped)
     return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
 
 
