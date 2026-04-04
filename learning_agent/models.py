@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class StrictModel(BaseModel):
@@ -72,8 +72,6 @@ class ConceptCard(StrictModel):
     why_it_matters: str
     common_mistake: str
     quick_check_question: Optional[str] = None
-    image_path: Optional[str] = None
-    image_alt: str = ""
 
 
 class LearningQuestion(StrictModel):
@@ -106,24 +104,10 @@ class LearningQuestionBankPayload(StrictModel):
     questions: List[LearningQuestion] = Field(default_factory=list)
 
 
-class FigureAsset(StrictModel):
-    id: str
-    title: str
-    image_path: str
-    alt_text: str
-    caption: str
-
-
-class ReadingSection(StrictModel):
-    id: str
-    title: str
-    body_markdown: str
-    figure_ids: List[str] = Field(default_factory=list)
-
-
 class ReadingMaterialPayload(StrictModel):
     week: int
-    reading_sections: List[ReadingSection] = Field(default_factory=list)
+    title: str
+    body_markdown: str
 
 
 class ConceptCardPayload(StrictModel):
@@ -134,8 +118,7 @@ class ConceptCardPayload(StrictModel):
 class LearningSession(StrictModel):
     week: int
     concept_cards: List[ConceptCard] = Field(default_factory=list)
-    figures: List[FigureAsset] = Field(default_factory=list)
-    reading_sections: List[ReadingSection] = Field(default_factory=list)
+    reading_material: Optional[ReadingMaterialPayload] = None
     questions: List[LearningQuestion] = Field(default_factory=list)
     attempts: List[QuestionAttempt] = Field(default_factory=list)
 
@@ -143,8 +126,7 @@ class LearningSession(StrictModel):
 class LearningBundle(StrictModel):
     week: int
     concept_cards: List[ConceptCard] = Field(default_factory=list)
-    figures: List[FigureAsset] = Field(default_factory=list)
-    reading_sections: List[ReadingSection] = Field(default_factory=list)
+    reading_material: Optional[ReadingMaterialPayload] = None
     questions: List[LearningQuestion] = Field(default_factory=list)
     attempts: List[QuestionAttempt] = Field(default_factory=list)
 
@@ -164,7 +146,10 @@ class CheckpointState(StrictModel):
 
 class ProgressState(StrictModel):
     current_week: int
-    active_functional_dirs: List[str] = Field(default_factory=list)
+    active_dirs: List[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("active_dirs", "active_functional_dirs"),
+    )
     gates: Gates = Field(default_factory=Gates)
     artifacts: ArtifactState = Field(default_factory=ArtifactState)
     metrics: MetricsState = Field(default_factory=MetricsState)

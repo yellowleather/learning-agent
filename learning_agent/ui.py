@@ -1057,20 +1057,6 @@ def render_page(
       border-radius: 0;
       background: transparent;
     }}
-    .concept-card figure, .reading-figure {{
-      margin: 0;
-    }}
-    .concept-card-figure {{
-      aspect-ratio: 16 / 10;
-      background: linear-gradient(180deg, #eef5f8, #ffffff);
-      border-bottom: 1px solid rgba(199, 210, 218, 0.9);
-    }}
-    .concept-card-figure img, .reading-figure img {{
-      display: block;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }}
     .concept-card-body {{
       padding: 0;
       display: grid;
@@ -1122,16 +1108,27 @@ def render_page(
       color: var(--text);
     }}
     .learn-orientation-panel {{
+      display: grid;
+      gap: 10px;
       margin-bottom: 18px;
+      padding: 16px 18px;
+      border: 1px solid rgba(182, 198, 210, 0.9);
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(233, 242, 247, 0.92), rgba(248, 251, 253, 0.96));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
     }}
     .learn-orientation-kicker {{
-      margin-bottom: 10px;
+      margin-bottom: 0;
       font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
       font-size: 0.78rem;
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--accent-dark);
+    }}
+    .reading-document {{
+      display: grid;
+      gap: 18px;
     }}
     .reading-section {{
       border-top: 1px solid rgba(199, 210, 218, 0.85);
@@ -1142,19 +1139,13 @@ def render_page(
       border-top: 0;
       padding-top: 0;
     }}
-    .reading-figure {{
-      border: 1px solid rgba(199, 210, 218, 0.9);
-      border-radius: 16px;
-      overflow: hidden;
-      background: #f8fbfd;
-      margin-bottom: 12px;
-    }}
-    .reading-caption {{
-      padding: 10px 12px;
-      font-size: 0.88rem;
-      color: var(--muted);
-      border-top: 1px solid rgba(199, 210, 218, 0.85);
-      background: rgba(255, 255, 255, 0.8);
+    .reading-section-title {{
+      margin: 0 0 10px;
+      font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+      font-size: 0.98rem;
+      font-weight: 700;
+      line-height: 1.3;
+      color: var(--text);
     }}
     .rendered-markdown {{
       display: grid;
@@ -4658,6 +4649,7 @@ def render_body(status: Optional[dict], initialized: bool, selected_question_id:
 
     learning_session = status.get("learning_session") or {}
     current_step = current_workflow_step(status)
+    orientation_html = render_week_orientation_banner(learning_session.get("reading_material"))
     assessment = (
         render_learning_assessment_v3(status, learning_session, selected_question_id)
         if current_step == "learn"
@@ -4666,6 +4658,7 @@ def render_body(status: Optional[dict], initialized: bool, selected_question_id:
     supporting_section = "" if current_step == "learn" else render_implementation_section_v3(status)
     return f"""
     <section class="implementation-shell-v3">
+      {orientation_html}
       {render_stepper_bar_v3(status, current_step, initialized=True)}
       {assessment}
       {supporting_section}
@@ -4712,18 +4705,14 @@ def render_learning_assessment_v3(status: dict, learning_session: dict, selected
     progress = status.get("question_progress", {})
     questions = learning_session.get("questions", [])
     attempts = latest_attempts(learning_session)
-    figures = {figure["id"]: figure for figure in learning_session.get("figures", [])}
-    orientation_section, reading_sections = split_learning_reading_sections(learning_session.get("reading_sections", []))
+    reading_material = learning_session.get("reading_material")
     selected_question = select_learning_question(questions, selected_question_id)
     cards_html = "".join(render_concept_card(card) for card in learning_session.get("concept_cards", []))
     if not cards_html:
         cards_html = "<p class='muted'>No concept cards generated yet.</p>"
-    sections_html = "".join(
-        render_reading_section(section, figures) for section in reading_sections
-    ) or "<p class='muted'>No reading material generated yet.</p>"
-    orientation_html = render_learning_orientation_panel(orientation_section)
+    reading_html = render_reading_material(reading_material)
     workspace_html = (
-        render_learning_workspace(selected_question, questions, attempts, figures, progress)
+        render_learning_workspace(selected_question, questions, attempts, progress)
         if selected_question
         else render_learning_workspace_empty_v3(progress)
     )
@@ -4741,7 +4730,6 @@ def render_learning_assessment_v3(status: dict, learning_session: dict, selected
           <span class="assessment-tag-v3">Concept anchors</span>
         </div>
       </div>
-      {orientation_html}
       <section class="learn-workspace learning-stage-shell">
         <div class="reading-column">
           <div class="reading-column-scroll" data-reading-scroll>
@@ -4751,7 +4739,7 @@ def render_learning_assessment_v3(status: dict, learning_session: dict, selected
             </article>
             <article class="subpanel stage-surface learn-reading-section-v3">
               <h3>Reading Material</h3>
-              <div class="reading-stack">{sections_html}</div>
+              <div class="reading-stack">{reading_html}</div>
             </article>
           </div>
         </div>
@@ -5116,19 +5104,16 @@ def render_learning_stage(
     progress = status.get("question_progress", {})
     questions = (learning_session or {}).get("questions", [])
     attempts = latest_attempts(learning_session)
-    figures = {figure["id"]: figure for figure in (learning_session or {}).get("figures", [])}
-    orientation_section, reading_sections = split_learning_reading_sections((learning_session or {}).get("reading_sections", []))
+    reading_material = (learning_session or {}).get("reading_material")
     selected_question = select_learning_question(questions, selected_question_id)
 
     cards_html = "".join(render_concept_card(card) for card in (learning_session or {}).get("concept_cards", []))
     if not cards_html:
         cards_html = "<p class='muted'>No concept cards generated yet.</p>"
 
-    sections_html = "".join(
-        render_reading_section(section, figures) for section in reading_sections
-    ) or "<p class='muted'>No reading material generated yet.</p>"
+    reading_html = render_reading_material(reading_material)
 
-    workspace_html = render_learning_workspace(selected_question, questions, attempts, figures, progress) if selected_question else """
+    workspace_html = render_learning_workspace(selected_question, questions, attempts, progress) if selected_question else """
       <article class="subpanel question-column" id="question-workspace">
         <h3>Answer Question</h3>
         <p class="muted">Learning content will load automatically for the current week. Once it is ready, this answer workspace will show the current question here.</p>
@@ -5158,7 +5143,7 @@ def render_learning_stage(
             </article>
             <article class="subpanel stage-surface">
               <h3>Reading Material</h3>
-              <div class="reading-stack">{sections_html}</div>
+              <div class="reading-stack">{reading_html}</div>
             </article>
           </div>
         </div>
@@ -5505,17 +5490,15 @@ def build_topic_chat_starter_prompts(learning_session: dict, selected_question: 
     prompts: list[str] = []
     questions = learning_session.get("questions", [])
     concept_cards = learning_session.get("concept_cards", [])
-    reading_sections = learning_session.get("reading_sections", [])
+    reading_material = learning_session.get("reading_material") or {}
+    markdown_sections = markdown_heading_sections(reading_material.get("body_markdown", ""))
 
     focus_question = selected_question or (questions[0] if questions else None)
     if focus_question and focus_question.get("prompt_text"):
         starter_topic = beginner_topic_from_question(focus_question["prompt_text"])
         prompts.append(f"I'm new to this. Can you explain {starter_topic} in simple terms?")
 
-    first_content_section = next(
-        (section for section in reading_sections if section.get("id") != "week_map" and section.get("title")),
-        None,
-    )
+    first_content_section = next((section for section in markdown_sections if section.get("title") != "How This Week Works"), None)
     if first_content_section:
         prompts.append(
             f'Can you walk me through "{first_content_section["title"]}" like I\'m just getting started?'
@@ -5526,8 +5509,8 @@ def build_topic_chat_starter_prompts(learning_session: dict, selected_question: 
         card_title = first_card.get("title") or humanize_section_label(first_card.get("concept", "concept"))
         prompts.append(f'What does "{card_title}" mean, and why does it matter this week?')
 
-    measurement_section = find_reading_section_for_theme(
-        reading_sections,
+    measurement_section = find_markdown_section_for_theme(
+        markdown_sections,
         ("latency", "throughput", "benchmark", "metric", "measure", "verify", "tokens per second", "tps"),
     )
     if measurement_section:
@@ -5536,8 +5519,8 @@ def build_topic_chat_starter_prompts(learning_session: dict, selected_question: 
         )
 
     if len(prompts) < 4:
-        build_section = find_reading_section_for_theme(
-            reading_sections,
+        build_section = find_markdown_section_for_theme(
+            markdown_sections,
             ("file", "build", "implement", "artifact", "deliverable", "code"),
         )
         if build_section:
@@ -5554,11 +5537,11 @@ def build_topic_chat_starter_prompts(learning_session: dict, selected_question: 
     return deduped_prompts
 
 
-def find_reading_section_for_theme(reading_sections: list[dict], keywords: tuple[str, ...]) -> Optional[dict]:
+def find_markdown_section_for_theme(markdown_sections: list[dict], keywords: tuple[str, ...]) -> Optional[dict]:
     best_section = None
     best_score = 0
-    for section in reading_sections:
-        if section.get("id") == "week_map":
+    for section in markdown_sections:
+        if section.get("title") == "How This Week Works":
             continue
         text = f"{section.get('title', '')} {section.get('body_markdown', '')}".lower()
         score = sum(1 for keyword in keywords if keyword in text)
@@ -5566,6 +5549,38 @@ def find_reading_section_for_theme(reading_sections: list[dict], keywords: tuple
             best_score = score
             best_section = section
     return best_section if best_score > 0 else None
+
+
+def markdown_heading_sections(body_markdown: str) -> list[dict[str, str]]:
+    sections: list[dict[str, str]] = []
+    current_title: Optional[str] = None
+    current_lines: list[str] = []
+
+    for raw_line in body_markdown.splitlines():
+        line = raw_line.strip()
+        heading_match = re.match(r"^##\s+(.+?)\s*$", line)
+        if heading_match:
+            if current_title is not None:
+                sections.append(
+                    {
+                        "title": current_title,
+                        "body_markdown": "\n".join(current_lines).strip(),
+                    }
+                )
+            current_title = heading_match.group(1).strip()
+            current_lines = []
+            continue
+        if current_title is not None:
+            current_lines.append(raw_line)
+
+    if current_title is not None:
+        sections.append(
+            {
+                "title": current_title,
+                "body_markdown": "\n".join(current_lines).strip(),
+            }
+        )
+    return sections
 
 
 def beginner_topic_from_question(prompt_text: str) -> str:
@@ -5675,7 +5690,10 @@ def render_readiness_rows_v3(status: dict) -> str:
 
 def assistant_resources_v3(status: dict, learning_session: dict, selected_question: Optional[dict]) -> list[str]:
     resources: list[str] = []
-    for section in learning_session.get("reading_sections", [])[:2]:
+    reading_material = learning_session.get("reading_material") or {}
+    if reading_material.get("title"):
+        resources.append(reading_material.get("title", "Week notes"))
+    for section in markdown_heading_sections(reading_material.get("body_markdown", ""))[:1]:
         resources.append(section.get("title", "Week notes"))
     for path in status["required_files"]:
         if len(resources) >= 3:
@@ -5750,20 +5768,16 @@ def render_learning_panel(
     progress = status.get("question_progress", {})
     questions = (learning_session or {}).get("questions", [])
     attempts = latest_attempts(learning_session)
-    figures = {figure["id"]: figure for figure in (learning_session or {}).get("figures", [])}
-    reading_sections = (learning_session or {}).get("reading_sections", [])
+    reading_material = (learning_session or {}).get("reading_material")
     selected_question = select_learning_question(questions, selected_question_id)
 
     cards_html = "".join(render_concept_card(card) for card in (learning_session or {}).get("concept_cards", []))
     if not cards_html:
         cards_html = "<p class='muted'>No concept cards generated yet.</p>"
 
-    sections_html = "".join(
-        render_reading_section(section, figures) for section in reading_sections
-    ) or "<p class='muted'>No reading material generated yet.</p>"
-    orientation_html = render_learning_orientation_panel(orientation_section)
+    reading_html = render_reading_material(reading_material)
 
-    workspace_html = render_learning_workspace(selected_question, questions, attempts, figures, progress) if selected_question else """
+    workspace_html = render_learning_workspace(selected_question, questions, attempts, progress) if selected_question else """
       <article class="subpanel question-column">
         <h3>Answer Question</h3>
         <p class="muted">Learning content will load automatically for the current week. Once it is ready, this answer workspace will show the current question here.</p>
@@ -5787,7 +5801,6 @@ def render_learning_panel(
           <p><strong>Required coverage:</strong> {progress.get('required_passed', 0)}/{progress.get('required_total', 0)} baseline questions passed.</p>
           <p class="muted">Keep the reading material and concept cards open on the left while you answer questions on the right.</p>
         </div>
-        {orientation_html}
         <section class="learn-workspace">
           <div class="reading-column">
             <div class="reading-column-scroll" data-reading-scroll>
@@ -5797,7 +5810,7 @@ def render_learning_panel(
               </article>
               <article class="subpanel learn-reading-section-v3">
                 <h3>Reading Material</h3>
-                <div class="reading-stack">{sections_html}</div>
+                <div class="reading-stack">{reading_html}</div>
               </article>
             </div>
           </div>
@@ -5836,33 +5849,56 @@ def render_concept_card(card: dict) -> str:
     )
 
 
-def split_learning_reading_sections(reading_sections: list[dict]) -> tuple[Optional[dict], list[dict]]:
-    orientation_section = None
-    remaining_sections: list[dict] = []
-    for section in reading_sections or []:
-        if orientation_section is None and section.get("id") == "week_map":
-            orientation_section = section
-            continue
-        remaining_sections.append(section)
-    return orientation_section, remaining_sections
+def render_reading_material(reading_material: Optional[dict]) -> str:
+    if not reading_material:
+        return "<p class='muted'>No reading material generated yet.</p>"
+    title = reading_material.get("title", "Reading")
+    body_markdown = reading_material.get("body_markdown", "")
+    markdown_sections = markdown_heading_sections(body_markdown)
+    content_sections = [section for section in markdown_sections if section.get("title") != "How This Week Works"]
 
+    if not markdown_sections:
+        return (
+            f"<article class='reading-section' id='reading-material'>"
+            f"<h4>{escape(title)}</h4>"
+            f"{render_markdown_block(body_markdown)}"
+            "</article>"
+        )
 
-def render_learning_orientation_panel(section: Optional[dict]) -> str:
-    if not section:
-        return ""
-    return (
-        f"<article class='subpanel stage-surface learn-orientation-panel' id='{escape(section.get('id', 'week_map'))}'>"
-        "<div class='learn-orientation-kicker'>How This Week Works</div>"
+    sections_html = "".join(
+        "<section class='reading-section'>"
+        f"<h5 class='reading-section-title'>{escape(section.get('title', 'Reading'))}</h5>"
         f"{render_markdown_block(section.get('body_markdown', ''))}"
+        "</section>"
+        for section in content_sections
+    )
+
+    return (
+        f"<article class='reading-document' id='reading-material'>"
+        f"<h4>{escape(title)}</h4>"
+        f"{sections_html}"
         "</article>"
     )
 
 
-def render_reading_section(section: dict, figures: dict[str, dict]) -> str:
+def render_week_orientation_banner(reading_material: Optional[dict]) -> str:
+    if not reading_material:
+        return ""
+    body_markdown = reading_material.get("body_markdown", "")
+    orientation_section = next(
+        (
+            section
+            for section in markdown_heading_sections(body_markdown)
+            if section.get("title") == "How This Week Works"
+        ),
+        None,
+    )
+    if not orientation_section or not orientation_section.get("body_markdown"):
+        return ""
     return (
-        f"<section class='reading-section' id='{escape(section['id'])}'>"
-        f"<h4>{escape(section['title'])}</h4>"
-        f"{render_markdown_block(section['body_markdown'])}"
+        "<section class='learn-orientation-panel'>"
+        "<div class='learn-orientation-kicker'>How This Week Works</div>"
+        f"{render_markdown_block(orientation_section.get('body_markdown', ''))}"
         "</section>"
     )
 
@@ -5871,7 +5907,6 @@ def render_learning_workspace(
     selected_question: dict,
     questions: list[dict],
     attempts: dict[str, dict],
-    figures: dict[str, dict],
     progress: dict,
 ) -> str:
     question_index = next((index for index, question in enumerate(questions) if question["id"] == selected_question["id"]), 0)
@@ -6538,6 +6573,21 @@ def render_markdown_block(text: str) -> str:
         if not line:
             flush_paragraph()
             flush_list()
+            continue
+        if line.startswith("### "):
+            flush_paragraph()
+            flush_list()
+            chunks.append(f"<h5>{render_inline_markup(line[4:])}</h5>")
+            continue
+        if line.startswith("## "):
+            flush_paragraph()
+            flush_list()
+            chunks.append(f"<h4>{render_inline_markup(line[3:])}</h4>")
+            continue
+        if line.startswith("# "):
+            flush_paragraph()
+            flush_list()
+            chunks.append(f"<h3>{render_inline_markup(line[2:])}</h3>")
             continue
         if line.startswith("- "):
             flush_paragraph()

@@ -14,7 +14,6 @@ from learning_agent.models import (
     ConceptCard,
     ConceptCardPayload,
     CurriculumMetadata,
-    FigureAsset,
     Ledger,
     LearningBundle,
     LearningQuestion,
@@ -23,7 +22,6 @@ from learning_agent.models import (
     ObservationRecord,
     QuestionAttempt,
     ReadingMaterialPayload,
-    ReadingSection,
     ReflectionRecord,
     TaskSession,
     TopicChatTurn,
@@ -62,7 +60,7 @@ class LearningController:
             "total_weeks": ledger.curriculum_metadata.total_weeks,
             "title": str(week_spec["short_title"]),
             "goal": str(week_spec["goal"]),
-            "active_dirs": ledger.state.active_functional_dirs,
+            "active_dirs": ledger.state.active_dirs,
             "required_files": ledger.state.artifacts.required_files,
             "completed_files": ledger.state.artifacts.completed_files,
             "required_metrics": ledger.state.metrics.required,
@@ -97,24 +95,21 @@ class LearningController:
         reading_payload = provider.generate_reading_material(week_spec, ledger.state, questions)
         if not isinstance(reading_payload, ReadingMaterialPayload):
             reading_payload = ReadingMaterialPayload.model_validate(reading_payload)
-        reading_sections = self._normalize_reading_sections(questions, reading_payload.reading_sections)
-        reading_errors = self._validate_reading_sections(questions, reading_sections)
+        reading_material = self._normalize_reading_material(reading_payload)
+        reading_errors = self._validate_reading_material(reading_material)
         if reading_errors:
             raise LearningAgentError("Learning Assist reading generation failed validation: " + "; ".join(reading_errors))
-        concept_payload = provider.generate_concept_cards_from_reading(week_spec, ledger.state, reading_sections)
+        concept_payload = provider.generate_concept_cards_from_reading(week_spec, ledger.state, reading_material)
         if not isinstance(concept_payload, ConceptCardPayload):
             concept_payload = ConceptCardPayload.model_validate(concept_payload)
-        concept_cards = self._normalize_concept_cards(reading_sections, concept_payload.concept_cards)
-        concept_errors = self._validate_concept_cards(reading_sections, concept_cards)
+        concept_cards = self._normalize_concept_cards(concept_payload.concept_cards)
+        concept_errors = self._validate_concept_cards(concept_cards)
         if concept_errors:
             raise LearningAgentError("Learning Assist concept-card generation failed validation: " + "; ".join(concept_errors))
-        figures = self._build_figure_assets(week_spec, concept_cards, questions)
-        concept_cards = self._decorate_concept_cards(concept_cards)
         session = LearningSession(
             week=int(week_spec["number"]),
             concept_cards=concept_cards,
-            figures=figures,
-            reading_sections=reading_sections,
+            reading_material=reading_material,
             questions=questions,
         )
         self.state.save_learning(session)
@@ -215,7 +210,7 @@ class LearningController:
             curriculum_metadata=metadata,
             state={
                 "current_week": int(next_week["number"]),
-                "active_functional_dirs": list(next_week["active_dirs"]),
+                "active_dirs": list(next_week["active_dirs"]),
                 "artifacts": {
                     "required_files": list(next_week["required_files"]),
                     "completed_files": [],
@@ -258,8 +253,7 @@ class LearningController:
         return LearningBundle(
             week=session.week,
             concept_cards=session.concept_cards,
-            figures=session.figures,
-            reading_sections=session.reading_sections,
+            reading_material=session.reading_material,
             questions=session.questions,
             attempts=session.attempts,
         )
@@ -421,97 +415,15 @@ class LearningController:
                         return nested
         return None
 
-    def _decorate_concept_cards(self, cards: list) -> list:
-        decorated = []
-        for index, card in enumerate(cards, start=1):
-            title = card.title.strip() or self._humanize_label(card.concept)
-            card_id = card.id.strip() or self._slugify(card.concept or title or f"concept-{index}")
-            image_key = self._image_key_for_text(f"{card.concept} {card.explanation} {card.why_it_matters}")
-            decorated.append(
-                card.model_copy(
-                    update={
-                        "id": card_id,
-                        "title": title,
-                        "image_path": self._image_path_for_key(image_key),
-                        "image_alt": self._figure_asset_for_key(image_key).alt_text,
-                    }
-                )
-            )
-        return decorated
-
-    def _build_figure_assets(
-        self,
-        week_spec: dict[str, Any],
-        concept_cards: list,
-        questions: list[LearningQuestion],
-    ) -> list[FigureAsset]:
-        figure_keys: list[str] = []
-        for card in concept_cards:
-            key = self._key_from_image_path(card.image_path)
-            if key:
-                self._append_if_missing(figure_keys, key)
-
-        combined_text = " ".join(question.prompt_text for question in questions).lower()
-        if "server.py" in " ".join(week_spec["required_files"]) or "api" in combined_text:
-            self._append_if_missing(figure_keys, "server_architecture")
-        if any(keyword in combined_text for keyword in ("benchmark", "latency", "throughput", "tokens per second", "tps")):
-            self._append_if_missing(figure_keys, "benchmark_flow")
-            self._append_if_missing(figure_keys, "latency_throughput")
-
-        return [self._figure_asset_for_key(key) for key in figure_keys]
-
-    def _normalize_reading_sections(
-        self,
-        questions: list[LearningQuestion],
-        reading_sections: list[ReadingSection],
-    ) -> list[ReadingSection]:
-        if not reading_sections:
-            return []
-
-        known_question_ids = {question.id for question in questions}
-        normalized_sections: list[ReadingSection] = []
-        used_ids: set[str] = set()
-        for index, section in enumerate(reading_sections, start=1):
-            raw_id = (section.id or "").strip() or (section.title or "").strip() or f"reading-{index}"
-            section_id = re.sub(r"[^a-z0-9_]+", "-", raw_id.lower()).strip("-") or f"reading_{index}"
-            if section_id in used_ids:
-                suffix = 2
-                while f"{section_id}-{suffix}" in used_ids:
-                    suffix += 1
-                section_id = f"{section_id}-{suffix}"
-            used_ids.add(section_id)
-            title = (section.title or "").strip() or self._humanize_label(section_id)
-            normalized_sections.append(
-                section.model_copy(
-                    update={
-                        "id": section_id,
-                        "title": title,
-                        "body_markdown": section.body_markdown.strip(),
-                        "figure_ids": [],
-                    }
-                )
-            )
-
-        week_map_index = next(
-            (
-                index
-                for index, section in enumerate(normalized_sections)
-                if section.id == "week_map" or section.title.strip().lower() == "how this week works"
-            ),
-            None,
-        )
-        if week_map_index is not None and week_map_index != 0:
-            week_map = normalized_sections.pop(week_map_index)
-            week_map = week_map.model_copy(update={"id": "week_map", "title": "How This Week Works"})
-            normalized_sections.insert(0, week_map)
-        elif week_map_index == 0:
-            normalized_sections[0] = normalized_sections[0].model_copy(update={"id": "week_map", "title": "How This Week Works"})
-
-        return normalized_sections
+    def _normalize_reading_material(self, reading_material: ReadingMaterialPayload) -> ReadingMaterialPayload:
+        title = (reading_material.title or "").strip() or "Week Reading"
+        body_markdown = (reading_material.body_markdown or "").strip()
+        if body_markdown and not re.search(r"(?im)^##\s+How This Week Works\s*$", body_markdown):
+            body_markdown = "## How This Week Works\n\n" + body_markdown
+        return reading_material.model_copy(update={"title": title, "body_markdown": body_markdown})
 
     def _normalize_concept_cards(
         self,
-        reading_sections: list[ReadingSection],
         concept_cards: list[ConceptCard],
     ) -> list[ConceptCard]:
         normalized_cards: list[ConceptCard] = []
@@ -541,67 +453,12 @@ class LearningController:
             )
         return normalized_cards
 
-    def _figure_asset_for_key(self, key: str) -> FigureAsset:
-        library = {
-            "prefill_decode": FigureAsset(
-                id="prefill_decode",
-                title="Prefill vs Decode",
-                image_path="/assets/illustrations/prefill-decode.svg",
-                alt_text="Diagram comparing prompt prefill with stepwise decode generation.",
-                caption="Prefill processes the whole prompt together; decode emits one token at a time.",
-            ),
-            "latency_throughput": FigureAsset(
-                id="latency_throughput",
-                title="Latency vs Throughput",
-                image_path="/assets/illustrations/latency-throughput.svg",
-                alt_text="Curve showing latency rising as throughput approaches saturation.",
-                caption="The knee of the curve is where throughput gains begin to cost too much latency.",
-            ),
-            "server_architecture": FigureAsset(
-                id="server_architecture",
-                title="Inference Server Architecture",
-                image_path="/assets/illustrations/server-architecture.svg",
-                alt_text="Request flow from API entry through queue, model runtime, and metrics.",
-                caption="Week 1 is about understanding the path from HTTP request to generated output and measurement.",
-            ),
-            "benchmark_flow": FigureAsset(
-                id="benchmark_flow",
-                title="Benchmark Flow",
-                image_path="/assets/illustrations/benchmark-flow.svg",
-                alt_text="Loop showing prompts, timed requests, metrics calculation, and result logging.",
-                caption="A clean benchmark loop separates generation, timing, and evidence capture.",
-            ),
-        }
-        return library[key]
-
-    def _image_key_for_text(self, text: str) -> str:
-        lower = text.lower()
-        if "prefill" in lower or "decode" in lower:
-            return "prefill_decode"
-        if "latency" in lower or "throughput" in lower or "tokens per second" in lower or "tps" in lower:
-            return "latency_throughput"
-        if "benchmark" in lower or "metric" in lower:
-            return "benchmark_flow"
-        return "server_architecture"
-
-    def _image_path_for_key(self, key: str) -> str:
-        return self._figure_asset_for_key(key).image_path
-
-    def _key_from_image_path(self, image_path: str | None) -> str | None:
-        if not image_path:
-            return None
-        return Path(image_path).stem.replace("-", "_")
-
     def _humanize_label(self, value: str) -> str:
         return " ".join(part.capitalize() for part in value.replace("-", "_").split("_") if part)
 
     def _slugify(self, value: str) -> str:
         slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
         return slug or "content"
-
-    def _append_if_missing(self, items: list[str], value: str) -> None:
-        if value not in items:
-            items.append(value)
 
     def _default_step_for_topic_chat(self, ledger: Ledger, learning_session: LearningSession | None) -> str:
         if learning_session is None or not self._required_questions_passed(learning_session):
@@ -652,10 +509,8 @@ class LearningController:
                 "Available concept cards: "
                 + (", ".join(card.title or card.concept for card in learning_session.concept_cards[:8]) or "(none)")
             )
-            lines.append(
-                "Reading sections: "
-                + (", ".join(section.title for section in learning_session.reading_sections[:8]) or "(none)")
-            )
+            if learning_session.reading_material is not None:
+                lines.append(f"Reading title: {learning_session.reading_material.title}")
 
         if ledger.state.observation is not None:
             observation = ledger.state.observation
@@ -728,22 +583,8 @@ class LearningController:
 
         return errors
 
-    def _validate_reading_sections(
-        self,
-        questions: list[LearningQuestion],
-        reading_sections: list[ReadingSection],
-    ) -> list[str]:
+    def _validate_reading_material(self, reading_material: ReadingMaterialPayload) -> list[str]:
         errors: list[str] = []
-        if len(reading_sections) < 3:
-            errors.append(f"expected at least 3 reading blocks but received {len(reading_sections)}")
-        if not reading_sections:
-            return errors
-
-        if reading_sections[0].id != "week_map":
-            errors.append("the first reading block must be week_map")
-        if reading_sections[0].title.strip() != "How This Week Works":
-            errors.append("the first reading block title must be 'How This Week Works'")
-
         banned_patterns = [
             r"\bchapter\b",
             r"\bsection\b",
@@ -753,27 +594,30 @@ class LearningController:
             r"\bui\b",
         ]
 
-        total_word_count = 0
-        for reading_section in reading_sections:
-            text = " ".join(part for part in (reading_section.title, reading_section.body_markdown) if part).strip()
-            total_word_count += len(reading_section.body_markdown.split())
-            if not reading_section.title.strip():
-                errors.append(f"reading block {reading_section.id!r} has an empty title")
-            if len(reading_section.body_markdown.split()) < 35:
-                errors.append(f"reading block {reading_section.id!r} is too thin to teach from")
-            for pattern in banned_patterns:
-                if re.search(pattern, text, flags=re.IGNORECASE):
-                    errors.append(f"reading block {reading_section.id!r} uses internal product language: {pattern}")
-                    break
+        if not reading_material.title.strip():
+            errors.append("reading material title cannot be empty")
+        if not reading_material.body_markdown.strip():
+            errors.append("reading material body cannot be empty")
+            return errors
+        if not re.search(r"(?im)^##\s+How This Week Works\s*$", reading_material.body_markdown):
+            errors.append("reading material must include a 'How This Week Works' heading")
 
+        total_word_count = len(reading_material.body_markdown.split())
         if total_word_count < 220:
             errors.append("reading material is too short to support the current week's question set")
+        if len(re.findall(r"(?im)^##\s+", reading_material.body_markdown)) < 3:
+            errors.append("reading material should contain at least 3 markdown sections")
+
+        text = " ".join(part for part in (reading_material.title, reading_material.body_markdown) if part).strip()
+        for pattern in banned_patterns:
+            if re.search(pattern, text, flags=re.IGNORECASE):
+                errors.append(f"reading material uses internal product language: {pattern}")
+                break
 
         return errors
 
     def _validate_concept_cards(
         self,
-        reading_sections: list[ReadingSection],
         concept_cards: list[ConceptCard],
     ) -> list[str]:
         errors: list[str] = []

@@ -88,24 +88,23 @@ class OpenAIProvider(LLMProvider):
             "- Make the prose sufficient to answer the question set, not just a summary.\n"
             "- Keep the reading tightly scoped to the current week. Do not leak future-week topics.\n"
             "- Use markdown paragraphs and short bullet lists where they genuinely help.\n"
-            "- Return 3-6 reading blocks.\n"
-            '- The first block must have id="week_map" and title="How This Week Works".\n'
-            "- The remaining reading blocks should be generated dynamically from the question bank.\n"
+            "- Return one reading document with fields: week, title, body_markdown.\n"
+            "- body_markdown must begin with a markdown heading exactly equal to `## How This Week Works`.\n"
+            "- After that opening section, include additional `##` headings generated dynamically from the question bank.\n"
             "- Do not assume Week 1 topics such as prefill/decode unless they are clearly supported by the provided questions.\n"
-            "- Name the remaining blocks after the actual technical themes that recur in the questions.\n"
-            "- Do not attach reading blocks to individual questions.\n\n"
-            "Required opening block:\n"
+            "- Name the additional sections after the actual technical themes that recur in the questions.\n"
+            "- Do not attach subsections to individual questions.\n\n"
+            "Required opening heading:\n"
             + json.dumps(
                 {
-                    "id": "week_map",
-                    "title": "How This Week Works",
+                    "heading": "How This Week Works",
                     "purpose": "Orient the learner to the week's goal, system shape, and why the work matters before implementation.",
                 },
                 indent=2,
             )
             + "\n\n"
             + (
-                f"Recurring question themes to consider when naming the remaining reading blocks:\n{json.dumps(theme_hints, indent=2)}\n\n"
+                f"Recurring question themes to consider when naming the remaining markdown sections:\n{json.dumps(theme_hints, indent=2)}\n\n"
                 if theme_hints
                 else ""
             )
@@ -113,8 +112,7 @@ class OpenAIProvider(LLMProvider):
             f"Current week context:\n{self._week_context_json(week_spec)}\n"
             f"Current ledger state:\n{ledger_state.model_dump_json(indent=2)}\n"
             f"Question bank:\n{json.dumps([question.model_dump(mode='json') for question in questions], indent=2)}\n"
-            'Required JSON shape: {"week": 1, "reading_sections": [{"id": "week_map", "title": "How This Week Works", '
-            '"body_markdown": "..."}]}'
+            'Required JSON shape: {"week": 1, "title": "Week 1 Reading", "body_markdown": "## How This Week Works\\n\\n..."}'
         )
         return self._completion_as_model(system_prompt, user_prompt, ReadingMaterialPayload)
 
@@ -122,7 +120,7 @@ class OpenAIProvider(LLMProvider):
         self,
         week_spec: dict[str, Any],
         ledger_state: ProgressState,
-        reading_sections: list,
+        reading_material: ReadingMaterialPayload,
     ) -> ConceptCardPayload:
         system_prompt = load_prompt("mentor.md")
         user_prompt = (
@@ -140,7 +138,7 @@ class OpenAIProvider(LLMProvider):
             "- Do not refer to the platform or to what the learner is clicking.\n\n"
             f"Current week context:\n{self._week_context_json(week_spec)}\n"
             f"Current ledger state:\n{ledger_state.model_dump_json(indent=2)}\n"
-            f"Reading material:\n{json.dumps([section.model_dump(mode='json') if hasattr(section, 'model_dump') else section for section in reading_sections], indent=2)}\n"
+            f"Reading material:\n{reading_material.model_dump_json(indent=2)}\n"
             'Required JSON shape: {"week": 1, "concept_cards": [{"id": "prefill-vs-decode", "concept": "prefill_vs_decode", '
             '"title": "Prefill vs Decode", "explanation": "...", "why_it_matters": "...", "common_mistake": "...", '
             '"quick_check_question": "..."}]}'

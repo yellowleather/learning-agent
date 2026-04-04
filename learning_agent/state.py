@@ -55,7 +55,7 @@ class StateStore:
             curriculum_metadata=metadata,
             state={
                 "current_week": int(week["number"]),
-                "active_functional_dirs": list(week["active_dirs"]),
+                "active_dirs": list(week["active_dirs"]),
                 "artifacts": {
                     "required_files": list(week["required_files"]),
                     "completed_files": [],

@@ -60,66 +60,43 @@ Narrative for week {week_number}.
     return "\n\n".join(blocks)
 
 
-def _reading_sections_for(questions):
+def _reading_material_for(questions):
     question_ids = [question["id"] if isinstance(question, dict) else question.id for question in questions]
+    del question_ids
     return ReadingMaterialPayload(
         week=1,
-        reading_sections=[
-            {
-                "id": "week_map",
-                "title": "How This Week Works",
-                "body_markdown": (
-                    "Week 1 is about learning the shape of a small inference system before you start writing code. "
-                    "You should come away knowing what the server is responsible for, how the model runtime fits into the path, "
-                    "why prompt handling and token generation are different kinds of work, and what evidence will later prove the system behaves correctly. "
-                    "If you can explain the system from the outside in, the implementation will feel grounded instead of random."
-                ),
-            },
-            {
-                "id": "request_to_response",
-                "title": "From Request To Generated Tokens",
-                "body_markdown": (
-                    "A useful mental model starts with one request entering the server and ends with generated output returning to the caller. "
-                    "The server validates the request, shapes the prompt, hands work to the runtime, and turns generated tokens back into an API response. "
-                    "That path matters because every performance claim, debugging step, and implementation decision sits somewhere along it. "
-                    "When you answer a question, you should be able to place the concept on this path instead of describing it in isolation."
-                ),
-            },
-            {
-                "id": "generation_mechanics",
-                "title": "Prefill, Decode, And Why The Split Matters",
-                "body_markdown": (
-                    "The core technical distinction this week is the split between prefill and decode. "
-                    "During prefill, the model absorbs the prompt and prepares state from the input context. "
-                    "After that, decode becomes a loop where each new token depends on the state built so far. "
-                    "If you blur those phases together, you lose the ability to explain latency behavior, throughput tradeoffs, and why prompt length and output length stress the system differently."
-                ),
-            },
-            {
-                "id": "build_artifacts",
-                "title": "How Week 1 Maps Onto Code",
-                "body_markdown": (
-                    "The reading should connect cleanly to the files you will build next. "
-                    "A server file expresses the request boundary, a benchmark file expresses how behavior gets measured, and the written results capture evidence that the system works as described. "
-                    "Thinking this way keeps implementation tied to system responsibilities rather than turning it into a list of disconnected coding tasks. "
-                    "Good answers about implementation should map ideas back to files, responsibilities, and observable behavior."
-                ),
-            },
-            {
-                "id": "measure_and_verify",
-                "title": "How To Measure And Verify",
-                "body_markdown": (
-                    "Performance numbers are only useful when you can say what was measured, what the number means, and what it hides. "
-                    "Latency and throughput answer different questions, and neither one is trustworthy without enough context about prompts, outputs, and the benchmark loop that produced them. "
-                    "The goal is to make performance reasoning disciplined rather than impressionistic. "
-                    "By the end of the week, you should be able to connect a metric back to the exact part of the inference path that could have produced it."
-                ),
-            },
-        ],
+        title="Week 1 Reading",
+        body_markdown=(
+            "## How This Week Works\n\n"
+            "Week 1 is about learning the shape of a small inference system before you start writing code. "
+            "You should come away knowing what the server is responsible for, how the model runtime fits into the path, "
+            "why prompt handling and token generation are different kinds of work, and what evidence will later prove the system behaves correctly. "
+            "If you can explain the system from the outside in, the implementation will feel grounded instead of random.\n\n"
+            "## From Request To Generated Tokens\n\n"
+            "A useful mental model starts with one request entering the server and ends with generated output returning to the caller. "
+            "The server validates the request, shapes the prompt, hands work to the runtime, and turns generated tokens back into an API response. "
+            "That path matters because every performance claim, debugging step, and implementation decision sits somewhere along it. "
+            "When you answer a question, you should be able to place the concept on this path instead of describing it in isolation.\n\n"
+            "## Prefill, Decode, And Why The Split Matters\n\n"
+            "The core technical distinction this week is the split between prefill and decode. "
+            "During prefill, the model absorbs the prompt and prepares state from the input context. "
+            "After that, decode becomes a loop where each new token depends on the state built so far. "
+            "If you blur those phases together, you lose the ability to explain latency behavior, throughput tradeoffs, and why prompt length and output length stress the system differently.\n\n"
+            "## How Week 1 Maps Onto Code\n\n"
+            "The reading should connect cleanly to the files you will build next. "
+            "A server file expresses the request boundary, a benchmark file expresses how behavior gets measured, and the written results capture evidence that the system works as described. "
+            "Thinking this way keeps implementation tied to system responsibilities rather than turning it into a list of disconnected coding tasks. "
+            "Good answers about implementation should map ideas back to files, responsibilities, and observable behavior.\n\n"
+            "## How To Measure And Verify\n\n"
+            "Performance numbers are only useful when you can say what was measured, what the number means, and what it hides. "
+            "Latency and throughput answer different questions, and neither one is trustworthy without enough context about prompts, outputs, and the benchmark loop that produced them. "
+            "The goal is to make performance reasoning disciplined rather than impressionistic. "
+            "By the end of the week, you should be able to connect a metric back to the exact part of the inference path that could have produced it."
+        ),
     )
 
 
-def _concept_cards_for(_reading_sections):
+def _concept_cards_for(_reading_material):
     return ConceptCardPayload(
         week=1,
         concept_cards=[
@@ -250,10 +227,10 @@ class FakeProvider:
         )
 
     def generate_reading_material(self, week_spec, ledger_state, questions):
-        return _reading_sections_for(questions)
+        return _reading_material_for(questions)
 
-    def generate_concept_cards_from_reading(self, week_spec, ledger_state, reading_sections):
-        return _concept_cards_for(reading_sections)
+    def generate_concept_cards_from_reading(self, week_spec, ledger_state, reading_material):
+        return _concept_cards_for(reading_material)
 
     def generate_task(self, week_spec, ledger_state):
         return GeneratedTask(
@@ -480,7 +457,7 @@ def test_full_week_one_transition(monkeypatch, tmp_path):
     controller, target_repo = make_controller(tmp_path, monkeypatch)
     ledger = controller.initialize()
     assert ledger.state.current_week == 1
-    assert ledger.state.active_functional_dirs == ["simple_server", "docs"]
+    assert ledger.state.active_dirs == ["simple_server", "docs"]
     pass_required_learning_questions(controller)
 
     task_session = controller.generate_task()
@@ -553,16 +530,14 @@ def test_learning_assist_flow_records_evidence_and_reflection(monkeypatch, tmp_p
     session = controller.generate_learning_assist()
     assert session.week == 1
     assert len(session.questions) == 50
-    assert session.figures
-    assert session.reading_sections
-    assert session.concept_cards[0].image_path == "/assets/illustrations/prefill-decode.svg"
-    assert session.reading_sections[0].title == "How This Week Works"
-    assert "generation_mechanics" in [section.id for section in session.reading_sections]
+    assert session.reading_material is not None
+    assert session.reading_material.title == "Week 1 Reading"
+    assert "## How This Week Works" in session.reading_material.body_markdown
+    assert "## Prefill, Decode, And Why The Split Matters" in session.reading_material.body_markdown
 
     bundle = controller.get_learning_bundle()
     assert bundle is not None
-    assert bundle.figures
-    assert bundle.reading_sections
+    assert bundle.reading_material is not None
 
     baseline_questions = [question for question in session.questions if question.depth == "baseline"]
     for question in baseline_questions:

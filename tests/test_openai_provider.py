@@ -86,13 +86,8 @@ def test_generate_reading_material_uses_blog_style_contract(monkeypatch):
         captured["response_model"] = response_model
         return ReadingMaterialPayload(
             week=1,
-            reading_sections=[
-                {
-                    "id": "week_map",
-                    "title": "How This Week Works",
-                    "body_markdown": "Read the system from outside in.",
-                }
-            ],
+            title="Week 1 Reading",
+            body_markdown="## How This Week Works\n\nRead the system from outside in.\n\n## System Shape\n\nStart at the API boundary.",
         )
 
     monkeypatch.setattr(provider, "_completion_as_model", fake_completion)
@@ -114,8 +109,8 @@ def test_generate_reading_material_uses_blog_style_contract(monkeypatch):
     prompt = captured["user_prompt"]
     assert "technical blog post or explainer" in prompt
     assert "Do not mention the words chapter, section, concept card" in prompt
-    assert '"id": "week_map"' in prompt
-    assert "The remaining reading blocks should be generated dynamically from the question bank." in prompt
+    assert "## How This Week Works" in prompt
+    assert "After that opening section, include additional `##` headings" in prompt
     assert "Do not assume Week 1 topics such as prefill/decode unless they are clearly supported by the provided questions." in prompt
     assert captured["response_model"] is ReadingMaterialPayload
 
@@ -148,13 +143,16 @@ def test_generate_concept_cards_from_reading_uses_reading_material_contract(monk
     payload = provider.generate_concept_cards_from_reading(
         week_spec=_week_spec(),
         ledger_state=ProgressState(current_week=1),
-        reading_sections=[
-            {
-                "id": "generation_mechanics",
-                "title": "Prefill, Decode, And Why The Split Matters",
-                "body_markdown": "Prefill processes the prompt. Decode emits output token by token.",
-            }
-        ],
+        reading_material=ReadingMaterialPayload(
+            week=1,
+            title="Week 1 Reading",
+            body_markdown=(
+                "## How This Week Works\n\n"
+                "Read the system from outside in.\n\n"
+                "## Prefill, Decode, And Why The Split Matters\n\n"
+                "Prefill processes the prompt. Decode emits output token by token."
+            ),
+        ),
     )
 
     assert payload.week == 1

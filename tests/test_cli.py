@@ -60,65 +60,42 @@ Narrative for week {week_number}.
     return "\n\n".join(blocks)
 
 
-def _reading_sections_for(questions):
+def _reading_material_for(questions):
     question_ids = [question["id"] if isinstance(question, dict) else question.id for question in questions]
+    del question_ids
     return ReadingMaterialPayload(
         week=1,
-        reading_sections=[
-            {
-                "id": "week_map",
-                "title": "How This Week Works",
-                "body_markdown": (
-                    "Week 1 teaches the shape of a basic inference system before implementation begins. "
-                    "The learner should understand what the server is responsible for, how the model runtime participates in generation, "
-                    "and why the deliverables are organized around serving, measurement, and written evidence. "
-                    "That context makes the later coding tasks feel like concrete expressions of the same system instead of a separate activity."
-                ),
-            },
-            {
-                "id": "request_to_response",
-                "title": "From Request To Generated Tokens",
-                "body_markdown": (
-                    "The cleanest way to understand this week is to trace one request all the way through the service. "
-                    "An API request arrives, the server validates and prepares it, the runtime performs model work, and generated output comes back through the service boundary. "
-                    "That path explains both system design and debugging because every claim about behavior eventually maps to some part of this flow."
-                ),
-            },
-            {
-                "id": "generation_mechanics",
-                "title": "Prefill, Decode, And Why The Split Matters",
-                "body_markdown": (
-                    "Prefill and decode are not the same kind of work. "
-                    "During prefill the prompt is consumed and turned into model state, then the runtime enters decode and emits output over time. "
-                    "Once you keep that split in view, latency and throughput questions become much easier to reason about. "
-                    "It also becomes easier to explain why long prompts and long generations can stress the system in different ways."
-                ),
-            },
-            {
-                "id": "build_artifacts",
-                "title": "How Week 1 Maps Onto Code",
-                "body_markdown": (
-                    "The implementation artifacts should feel like direct representations of the ideas in the reading. "
-                    "One file defines the serving boundary, another captures measurement logic, and the results document turns observations into evidence. "
-                    "That mapping helps you explain why each file exists and what system responsibility it carries. "
-                    "Questions about implementation should therefore connect code structure back to runtime behavior and measurement."
-                ),
-            },
-            {
-                "id": "measure_and_verify",
-                "title": "How To Measure And Verify",
-                "body_markdown": (
-                    "You should not treat performance numbers as isolated facts. "
-                    "A useful benchmark makes clear what was timed, how outputs were counted, what prompt shape was used, and why repeated runs deserve trust. "
-                    "Latency and throughput illuminate different properties of the same system, so both need to be tied back to the inference path that produced them. "
-                    "That is what turns a number into technical evidence."
-                ),
-            },
-        ],
+        title="Week 1 Reading",
+        body_markdown=(
+            "## How This Week Works\n\n"
+            "Week 1 teaches the shape of a basic inference system before implementation begins. "
+            "The learner should understand what the server is responsible for, how the model runtime participates in generation, "
+            "and why the deliverables are organized around serving, measurement, and written evidence. "
+            "That context makes the later coding tasks feel like concrete expressions of the same system instead of a separate activity.\n\n"
+            "## From Request To Generated Tokens\n\n"
+            "The cleanest way to understand this week is to trace one request all the way through the service. "
+            "An API request arrives, the server validates and prepares it, the runtime performs model work, and generated output comes back through the service boundary. "
+            "That path explains both system design and debugging because every claim about behavior eventually maps to some part of this flow.\n\n"
+            "## Prefill, Decode, And Why The Split Matters\n\n"
+            "Prefill and decode are not the same kind of work. "
+            "During prefill the prompt is consumed and turned into model state, then the runtime enters decode and emits output over time. "
+            "Once you keep that split in view, latency and throughput questions become much easier to reason about. "
+            "It also becomes easier to explain why long prompts and long generations can stress the system in different ways.\n\n"
+            "## How Week 1 Maps Onto Code\n\n"
+            "The implementation artifacts should feel like direct representations of the ideas in the reading. "
+            "One file defines the serving boundary, another captures measurement logic, and the results document turns observations into evidence. "
+            "That mapping helps you explain why each file exists and what system responsibility it carries. "
+            "Questions about implementation should therefore connect code structure back to runtime behavior and measurement.\n\n"
+            "## How To Measure And Verify\n\n"
+            "You should not treat performance numbers as isolated facts. "
+            "A useful benchmark makes clear what was timed, how outputs were counted, what prompt shape was used, and why repeated runs deserve trust. "
+            "Latency and throughput illuminate different properties of the same system, so both need to be tied back to the inference path that produced them. "
+            "That is what turns a number into technical evidence."
+        ),
     )
 
 
-def _concept_cards_for(_reading_sections):
+def _concept_cards_for(_reading_material):
     return ConceptCardPayload(
         week=1,
         concept_cards=[
@@ -219,10 +196,10 @@ class FakeProvider:
         return LearningQuestionBankPayload(week=week_spec["number"], questions=questions)
 
     def generate_reading_material(self, week_spec, ledger_state, questions):
-        return _reading_sections_for(questions)
+        return _reading_material_for(questions)
 
-    def generate_concept_cards_from_reading(self, week_spec, ledger_state, reading_sections):
-        return _concept_cards_for(reading_sections)
+    def generate_concept_cards_from_reading(self, week_spec, ledger_state, reading_material):
+        return _concept_cards_for(reading_material)
 
     def generate_task(self, week_spec, ledger_state):
         raise AssertionError("Task generation is not exercised in this CLI test.")

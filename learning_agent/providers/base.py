@@ -38,7 +38,7 @@ class LLMProvider(ABC):
         self,
         week_spec: dict[str, Any],
         ledger_state: ProgressState,
-        reading_sections: list,
+        reading_material: ReadingMaterialPayload,
     ) -> ConceptCardPayload:
         raise NotImplementedError
 

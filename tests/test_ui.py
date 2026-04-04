@@ -50,63 +50,40 @@ Narrative for week {week_number}.
     return "\n\n".join(blocks)
 
 
-def _reading_sections_for(questions):
+def _reading_material_for(questions):
     question_ids = [question["id"] if isinstance(question, dict) else question.id for question in questions]
+    del question_ids
     return {
         "week": 1,
-        "reading_sections": [
-            {
-                "id": "week_map",
-                "title": "How This Week Works",
-                "body_markdown": (
-                    "Week 1 introduces the shape of a small inference system before implementation starts. "
-                    "The learner should understand the serving boundary, the model runtime, the split between prompt handling and token generation, "
-                    "and the role of measurement in proving that the system behaves the way it is described. "
-                    "That foundation is what makes the later coding and benchmarking work coherent."
-                ),
-            },
-            {
-                "id": "request_to_response",
-                "title": "From Request To Generated Tokens",
-                "body_markdown": (
-                    "Tracing one request from API entry to generated output gives the clearest mental model for the week. "
-                    "The server receives and validates input, prepares the prompt, delegates model work to the runtime, and packages the output back into a response. "
-                    "Every debugging conversation and every system explanation can be grounded in that path."
-                ),
-            },
-            {
-                "id": "generation_mechanics",
-                "title": "Prefill, Decode, And Why The Split Matters",
-                "body_markdown": (
-                    "Prefill processes the prompt first so the model can build the state it needs for generation. "
-                    "After that, decode produces output incrementally over time. "
-                    "Keeping those phases separate helps the learner explain performance behavior, user-visible latency, and why prompt length and output length affect the system differently. "
-                    "It also makes the benchmark results more interpretable."
-                ),
-            },
-            {
-                "id": "build_artifacts",
-                "title": "How Week 1 Maps Onto Code",
-                "body_markdown": (
-                    "The reading should point naturally toward the files that get built next. "
-                    "A serving file defines the API boundary, a benchmark file defines how behavior is measured, and a results document records what was observed. "
-                    "That mapping keeps implementation grounded in system responsibilities instead of reducing the work to disconnected tasks."
-                ),
-            },
-            {
-                "id": "measure_and_verify",
-                "title": "How To Measure And Verify",
-                "body_markdown": (
-                    "Performance reasoning should be disciplined. "
-                    "A metric only becomes useful when the learner can explain what was timed, what the value means, what the benchmark setup included, and what the number still does not tell you. "
-                    "Latency and throughput answer different questions, and both need to be connected back to the inference path that produced them."
-                ),
-            },
-        ],
+        "title": "Week 1 Reading",
+        "body_markdown": (
+            "## How This Week Works\n\n"
+            "Week 1 introduces the shape of a small inference system before implementation starts. "
+            "The learner should understand the serving boundary, the model runtime, the split between prompt handling and token generation, "
+            "and the role of measurement in proving that the system behaves the way it is described. "
+            "That foundation is what makes the later coding and benchmarking work coherent.\n\n"
+            "## From Request To Generated Tokens\n\n"
+            "Tracing one request from API entry to generated output gives the clearest mental model for the week. "
+            "The server receives and validates input, prepares the prompt, delegates model work to the runtime, and packages the output back into a response. "
+            "Every debugging conversation and every system explanation can be grounded in that path.\n\n"
+            "## Prefill, Decode, And Why The Split Matters\n\n"
+            "Prefill processes the prompt first so the model can build the state it needs for generation. "
+            "After that, decode produces output incrementally over time. "
+            "Keeping those phases separate helps the learner explain performance behavior, user-visible latency, and why prompt length and output length affect the system differently. "
+            "It also makes the benchmark results more interpretable.\n\n"
+            "## How Week 1 Maps Onto Code\n\n"
+            "The reading should point naturally toward the files that get built next. "
+            "A serving file defines the API boundary, a benchmark file defines how behavior is measured, and a results document records what was observed. "
+            "That mapping keeps implementation grounded in system responsibilities instead of reducing the work to disconnected tasks.\n\n"
+            "## How To Measure And Verify\n\n"
+            "Performance reasoning should be disciplined. "
+            "A metric only becomes useful when the learner can explain what was timed, what the value means, what the benchmark setup included, and what the number still does not tell you. "
+            "Latency and throughput answer different questions, and both need to be connected back to the inference path that produced them."
+        ),
     }
 
 
-def _concept_cards_for(_reading_sections):
+def _concept_cards_for(_reading_material):
     return {
         "week": 1,
         "concept_cards": [
@@ -234,10 +211,10 @@ class FakeProvider:
         return {"week": week_spec["number"], "questions": questions}
 
     def generate_reading_material(self, week_spec, ledger_state, questions):
-        return _reading_sections_for(questions)
+        return _reading_material_for(questions)
 
-    def generate_concept_cards_from_reading(self, week_spec, ledger_state, reading_sections):
-        return _concept_cards_for(reading_sections)
+    def generate_concept_cards_from_reading(self, week_spec, ledger_state, reading_material):
+        return _concept_cards_for(reading_material)
 
     def generate_task(self, week_spec, ledger_state):
         raise AssertionError("Task generation is not exercised in this UI test.")
