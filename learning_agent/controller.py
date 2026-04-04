@@ -60,6 +60,7 @@ class LearningController:
             "total_weeks": ledger.curriculum_metadata.total_weeks,
             "title": str(week_spec["short_title"]),
             "goal": str(week_spec["goal"]),
+            "key_resources": list(week_spec.get("key_resources", [])),
             "active_dirs": ledger.state.active_dirs,
             "required_files": ledger.state.artifacts.required_files,
             "completed_files": ledger.state.artifacts.completed_files,

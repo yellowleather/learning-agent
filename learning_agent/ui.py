@@ -4745,6 +4745,7 @@ def render_learning_assessment_v3(status: dict, learning_session: dict, selected
               <h3>Reading Material</h3>
               <div class="reading-stack">{reading_html}</div>
             </article>
+            {render_additional_resources_panel(status, "subpanel stage-surface learn-reading-section-v3")}
           </div>
         </div>
         <div class="questions-column">
@@ -5149,6 +5150,7 @@ def render_learning_stage(
               <h3>Reading Material</h3>
               <div class="reading-stack">{reading_html}</div>
             </article>
+            {render_additional_resources_panel(status, "subpanel stage-surface")}
           </div>
         </div>
         <div class="questions-column">
@@ -5672,6 +5674,29 @@ def render_metric_rows_v3(status: dict) -> str:
     return "".join(rows) or "<li class='metric-item-v3'><span>No metrics</span><span class='sidebar-status-v3'>Empty</span></li>"
 
 
+def render_resource_rows_v3(status: dict) -> str:
+    rows = []
+    for resource in status.get("key_resources", []):
+        rows.append(f"<li class='resource-item-v3'><span>{format_resource_text_html(resource)}</span></li>")
+    return "".join(rows) or "<li class='resource-item-v3'><span>No additional resources for this week.</span></li>"
+
+
+def render_additional_resources_panel(status: dict, classes: str) -> str:
+    return (
+        f"<article class='{escape(classes)}'>"
+        "<h3>Additional Resources</h3>"
+        f"<ul class='resource-list-v3'>{render_resource_rows_v3(status)}</ul>"
+        "</article>"
+    )
+
+
+def format_resource_text_html(text: str) -> str:
+    formatted = escape(text)
+    formatted = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", formatted)
+    formatted = re.sub(r"`([^`]+)`", r"<code>\1</code>", formatted)
+    return formatted
+
+
 def render_readiness_rows_v3(status: dict) -> str:
     concepts_ready = step_status(status, "learn") == "passed"
     files_ready = step_status(status, "build") == "passed"
@@ -5816,6 +5841,7 @@ def render_learning_panel(
                 <h3>Reading Material</h3>
                 <div class="reading-stack">{reading_html}</div>
               </article>
+              {render_additional_resources_panel(status, "subpanel learn-reading-section-v3")}
             </div>
           </div>
           <div class="questions-column">

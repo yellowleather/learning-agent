@@ -44,7 +44,8 @@ Narrative for week {week_number}.
 
 ### Key Resources
 
-- Example resource.
+- **Example resource.**
+- Production reference in `simple_server/server.py`.
 """
         )
     return "\n\n".join(blocks)
@@ -314,7 +315,8 @@ This week establishes the baseline serving path and the first performance measur
 
 ### Key Resources
 
-- Example resource.
+- **Example resource.**
+- Production reference in `simple_server/server.py`.
 
 {_extra_weeks()}
 
@@ -434,6 +436,9 @@ def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
     assert "Implementation" in page
     assert "Deliverables" in page
     assert "Benchmark Metrics" in page
+    assert "Additional Resources" in page
+    assert "<strong>Example resource.</strong>" in page
+    assert "Production reference in <code>simple_server/server.py</code>." in page
     assert "Approval Readiness" in page
     assert "Concept Questions" in page
     assert "Required Files" in page
