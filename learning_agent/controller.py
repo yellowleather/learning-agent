@@ -313,6 +313,7 @@ class LearningController:
         history: list[dict[str, str]] | list[TopicChatTurn],
         current_step: str,
         selected_question_id: str | None = None,
+        selection_context: str | None = None,
     ) -> dict[str, Any]:
         done_event: dict[str, Any] | None = None
         error_message: str | None = None
@@ -321,6 +322,7 @@ class LearningController:
             history=history,
             current_step=current_step,
             selected_question_id=selected_question_id,
+            selection_context=selection_context,
         ):
             event_type = str(event.get("type") or "")
             if event_type == "done":
@@ -344,6 +346,7 @@ class LearningController:
         history: list[dict[str, str]] | list[TopicChatTurn],
         current_step: str,
         selected_question_id: str | None = None,
+        selection_context: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         if not message.strip():
             raise LearningAgentError("Topic chat message cannot be empty.")
@@ -363,6 +366,7 @@ class LearningController:
             learning_session=session,
             current_step=step_id,
             selected_question_id=selected_question_id,
+            selection_context=selection_context,
         )
         yield {
             "type": "start",
@@ -655,9 +659,11 @@ class LearningController:
         learning_session: LearningSession | None,
         current_step: str,
         selected_question_id: str | None,
+        selection_context: str | None,
     ) -> tuple[str, str]:
         blockers = self._approval_blockers(ledger)
         progress = self._question_progress(learning_session)
+        normalized_selection, selection_was_truncated = self._normalize_topic_chat_selection_context(selection_context)
         lines = [
             f"Step: {current_step}",
             f"Week title: {week_spec['short_title']}",
@@ -680,6 +686,13 @@ class LearningController:
             lines.append(
                 "Selected question context is available in the UI but is intentionally not injected into chat grounding by default."
             )
+        if normalized_selection:
+            lines.append("Selected UI text for this message:")
+            lines.append("<<<SELECTED_TEXT")
+            lines.append(normalized_selection)
+            lines.append("SELECTED_TEXT>>>")
+            if selection_was_truncated:
+                lines.append("Selected UI text was truncated to fit the topic chat context window.")
 
         if learning_session is not None:
             lines.append(
@@ -704,6 +717,20 @@ class LearningController:
             lines.append(f"Latest reflection: {ledger.state.reflection.text}")
 
         return context_label, "\n".join(lines)
+
+    def _normalize_topic_chat_selection_context(self, selection_context: str | None) -> tuple[str, bool]:
+        text = str(selection_context or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+        if not text:
+            return "", False
+
+        max_chars = 2400
+        if len(text) <= max_chars:
+            return text, False
+
+        clipped = text[:max_chars].rstrip()
+        if "\n" not in clipped:
+            clipped = clipped.rsplit(" ", 1)[0].rstrip() or text[:max_chars].rstrip()
+        return clipped, True
 
     def _approval_blockers(self, ledger: Ledger) -> list[str]:
         blockers = []

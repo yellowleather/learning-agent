@@ -277,12 +277,14 @@ def run_topic_chat_stream(payload: dict[str, Any]) -> Iterator[dict[str, Any]]:
 
         current_step = str(payload.get("current_step") or "").strip()
         selected_question_id = str(payload.get("selected_question_id") or "").strip() or None
+        selection_context = str(payload.get("selection_context") or "").strip() or None
         message = str(payload.get("message") or "")
         yield from get_controller().stream_topic_chat(
             message=message,
             history=history,
             current_step=current_step,
             selected_question_id=selected_question_id,
+            selection_context=selection_context,
         )
     except LearningAgentError as exc:
         yield {"type": "error", "error": str(exc)}
@@ -357,7 +359,9 @@ def render_page(
       --shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
       --shadow-soft: 0 8px 24px rgba(15, 23, 42, 0.06);
       --left-rail-width: 236px;
+      --left-resizer-width: 12px;
       --right-rail-width: 250px;
+      --right-resizer-width: 12px;
       --assessment-side-width: 244px;
       --sidebar-width: 340px;
       --course-bar-space: 88px;
@@ -1152,11 +1156,14 @@ def render_page(
       display: grid;
       gap: 10px;
     }}
-    .rendered-markdown p, .rendered-markdown ul {{
+    .rendered-markdown p, .rendered-markdown ul, .rendered-markdown ol {{
       margin: 0;
     }}
-    .rendered-markdown ul {{
+    .rendered-markdown ul, .rendered-markdown ol {{
       padding-left: 18px;
+    }}
+    .rendered-markdown li + li {{
+      margin-top: 4px;
     }}
     .rendered-markdown pre {{
       margin: 0;
@@ -1470,8 +1477,8 @@ def render_page(
       display: grid;
       gap: 12px;
       align-content: start;
-      min-height: 170px;
-      max-height: min(34vh, 320px);
+      min-height: 320px;
+      max-height: min(56vh, 640px);
       overflow-y: auto;
       padding-right: 4px;
     }}
@@ -1532,6 +1539,51 @@ def render_page(
       line-height: 1.5;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
+    }}
+    .topic-chat-context-strip {{
+      display: grid;
+      gap: 8px;
+    }}
+    .topic-chat-context-chip {{
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: start;
+      padding: 10px 12px;
+      border-radius: 16px;
+      border: 1px solid rgba(188, 202, 214, 0.94);
+      background: linear-gradient(180deg, rgba(244, 248, 251, 0.98), rgba(234, 241, 246, 0.94));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+    }}
+    .topic-chat-context-copy {{
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+    }}
+    .topic-chat-context-kicker {{
+      font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-dark);
+    }}
+    .topic-chat-context-preview {{
+      margin: 0;
+      min-width: 0;
+      font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+      font-size: 0.84rem;
+      line-height: 1.4;
+      color: var(--text);
+      overflow-wrap: anywhere;
+    }}
+    .topic-chat-context-clear {{
+      width: 28px;
+      height: 28px;
+      min-height: 28px;
+      padding: 0;
+      border-radius: 999px;
+      box-shadow: none;
     }}
     .topic-chat-toolbar {{
       display: flex;
@@ -1881,16 +1933,92 @@ def render_page(
       box-shadow: 0 8px 16px rgba(21, 95, 134, 0.18);
     }}
     .app-content-v3 {{
+      position: relative;
       display: grid;
-      grid-template-columns: var(--left-rail-width) 12px minmax(0, 1fr) 12px var(--right-rail-width);
+      grid-template-columns:
+        var(--left-rail-width)
+        var(--left-resizer-width)
+        minmax(0, 1fr)
+        var(--right-resizer-width)
+        var(--right-rail-width);
       gap: 0;
       padding: 0;
+    }}
+    .sidebar-edge-toggle-v3 {{
+      --sidebar-edge-toggle-transform: none;
+      position: absolute;
+      top: 24px;
+      z-index: 4;
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      border-radius: 999px;
+      border: 1px solid rgba(191, 208, 220, 0.94);
+      background: rgba(255, 255, 255, 0.96);
+      color: var(--accent-dark);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 10px 26px rgba(15, 23, 42, 0.1);
+      cursor: pointer;
+      transform: var(--sidebar-edge-toggle-transform);
+      transition: background 120ms ease, border-color 120ms ease, transform 120ms ease, color 120ms ease;
+    }}
+    .sidebar-edge-toggle-v3:hover {{
+      background: rgba(240, 246, 251, 0.98);
+      border-color: rgba(118, 156, 181, 0.75);
+      transform: var(--sidebar-edge-toggle-transform) translateY(-1px);
+    }}
+    .sidebar-edge-toggle-v3-left {{
+      left: max(8px, calc(var(--left-rail-width) + var(--left-resizer-width) - 16px));
+    }}
+    .sidebar-edge-toggle-v3-right {{
+      right: max(8px, calc(var(--right-rail-width) + var(--right-resizer-width) - 16px));
+    }}
+    .sidebar-edge-toggle-v3[aria-pressed="false"] {{
+      background: rgba(225, 238, 246, 0.98);
+      border-color: rgba(118, 156, 181, 0.72);
+    }}
+    .sidebar-edge-toggle-v3 .sidebar-icon {{
+      width: 16px;
+      height: 16px;
+    }}
+    .sidebar-edge-toggle-v3 .sidebar-icon::before {{
+      top: 0;
+      bottom: 0;
+      left: 2px;
+      width: 3px;
+    }}
+    .sidebar-edge-toggle-v3 .sidebar-icon::after {{
+      right: 1px;
+      width: 6px;
+      height: 6px;
+    }}
+    .sidebar-edge-toggle-v3-right .sidebar-icon {{
+      transform: scaleX(-1);
+    }}
+    body.left-rail-collapsed {{
+      --left-rail-width: 0px;
+      --left-resizer-width: 0px;
+    }}
+    body.right-rail-collapsed {{
+      --right-rail-width: 0px;
+      --right-resizer-width: 0px;
+    }}
+    body.left-rail-collapsed .sidebar-edge-toggle-v3-left {{
+      left: 0;
+      --sidebar-edge-toggle-transform: translateX(-35%);
+    }}
+    body.right-rail-collapsed .sidebar-edge-toggle-v3-right {{
+      right: 0;
+      --sidebar-edge-toggle-transform: translateX(35%);
     }}
     .panel-resizer-v3 {{
       position: relative;
       cursor: col-resize;
       user-select: none;
       touch-action: none;
+      transition: opacity 140ms ease;
     }}
     .panel-resizer-v3::before {{
       content: "";
@@ -1933,12 +2061,33 @@ def render_page(
       align-content: start;
       padding: 16px 12px 22px;
       background: rgba(248, 250, 253, 0.42);
+      overflow: hidden;
+      transition: opacity 140ms ease, padding 140ms ease, border-color 140ms ease;
     }}
     #left-sidebar.workspace-sidebar-v3 {{
       border-right: 1px solid rgba(217, 226, 236, 0.92);
     }}
     .workspace-sidebar-right-v3 {{
       border-left: 1px solid rgba(217, 226, 236, 0.92);
+    }}
+    body.left-rail-collapsed #left-sidebar.workspace-sidebar-v3 {{
+      padding-left: 0;
+      padding-right: 0;
+      border-right-color: transparent;
+      opacity: 0;
+      pointer-events: none;
+    }}
+    body.right-rail-collapsed .workspace-sidebar-right-v3 {{
+      padding-left: 0;
+      padding-right: 0;
+      border-left-color: transparent;
+      opacity: 0;
+      pointer-events: none;
+    }}
+    body.left-rail-collapsed .panel-resizer-v3[data-panel-resizer="left"],
+    body.right-rail-collapsed .panel-resizer-v3[data-panel-resizer="right"] {{
+      opacity: 0;
+      pointer-events: none;
     }}
     .workspace-sidebar-v3 .panel {{
       padding: 12px;
@@ -3029,6 +3178,7 @@ def render_page(
     .assistant-chat-shell-v3 {{
       display: grid;
       gap: 10px;
+      min-height: 500px;
     }}
     .assistant-chat-thread-v3 {{
       padding: 0;
@@ -3054,6 +3204,9 @@ def render_page(
       .app-content-v3 {{
         grid-template-columns: 260px minmax(0, 1fr);
       }}
+      .sidebar-edge-toggle-v3 {{
+        display: none;
+      }}
       .panel-resizer-v3 {{
         display: none;
       }}
@@ -3062,6 +3215,13 @@ def render_page(
         border-left: 0;
         border-top: 1px solid rgba(217, 226, 236, 0.92);
       }}
+      body.left-rail-collapsed .app-content-v3 {{
+        grid-template-columns: minmax(0, 1fr);
+      }}
+      body.left-rail-collapsed #left-sidebar.workspace-sidebar-v3,
+      body.right-rail-collapsed .workspace-sidebar-right-v3 {{
+        display: none;
+      }}
     }}
     @media (max-width: 920px) {{
       .app-topbar-v3 {{
@@ -3069,10 +3229,14 @@ def render_page(
       }}
       .app-topbar-actions {{
         justify-content: flex-start;
+        flex-wrap: wrap;
       }}
       .app-content-v3 {{
         grid-template-columns: 1fr;
         padding: 0;
+      }}
+      .sidebar-edge-toggle-v3 {{
+        display: none;
       }}
       .panel-resizer-v3 {{
         display: none;
@@ -3080,6 +3244,10 @@ def render_page(
       #left-sidebar.workspace-sidebar-v3,
       .workspace-sidebar-right-v3 {{
         border: 0;
+      }}
+      body.left-rail-collapsed #left-sidebar.workspace-sidebar-v3,
+      body.right-rail-collapsed .workspace-sidebar-right-v3 {{
+        display: none;
       }}
       .workspace-main-v3 {{
         padding: 20px 14px 24px;
@@ -3133,6 +3301,7 @@ def render_page(
     {render_app_topbar(status, initialized)}
     <div class="app-content-v3">
       {render_left_sidebar(status, initialized)}
+      {render_sidebar_edge_toggle("left", "Show Guide", "Hide Guide", "sidebar-edge-toggle-v3-left")}
       <div class="panel-resizer-v3" data-panel-resizer="left" aria-hidden="true"></div>
       <div class="workspace-main-v3">
         {render_notice(message, error)}
@@ -3142,6 +3311,7 @@ def render_page(
       </div>
       <div class="panel-resizer-v3" data-panel-resizer="right" aria-hidden="true"></div>
       {render_right_sidebar(status, initialized, selected_question_id=selected_question_id)}
+      {render_sidebar_edge_toggle("right", "Show Assistant", "Hide Assistant", "sidebar-edge-toggle-v3-right")}
     </div>
   </div>
 </body>
@@ -3203,6 +3373,23 @@ def render_app_topbar(status: Optional[dict], initialized: bool) -> str:
         <span class="topbar-avatar" aria-label="User avatar">PE</span>
       </div>
     </header>
+    """
+
+
+def render_sidebar_edge_toggle(side: str, show_label: str, hide_label: str, side_class: str) -> str:
+    return f"""
+    <button
+      type="button"
+      class="sidebar-edge-toggle-v3 {side_class}"
+      data-sidebar-toggle="{escape(side)}"
+      data-sidebar-toggle-show="{escape(show_label)}"
+      data-sidebar-toggle-hide="{escape(hide_label)}"
+      aria-label="{escape(hide_label)}"
+      aria-pressed="true"
+      title="{escape(hide_label)}"
+    >
+      <span class="sidebar-icon" aria-hidden="true"></span>
+    </button>
     """
 
 
@@ -3756,6 +3943,198 @@ def render_topic_chat_script() -> str:
         }
       }
 
+      function escapeHtml(text) {
+        const node = document.createElement("div");
+        node.textContent = text == null ? "" : String(text);
+        return node.innerHTML;
+      }
+
+      function renderInlineMarkup(text) {
+        let escaped = escapeHtml(text);
+        escaped = escaped.replace(/`([^`]+)`/g, "<code>$1</code>");
+        return escaped.replace(/\\*\\*(.+?)\\*\\*/g, "<strong>$1</strong>");
+      }
+
+      function renderMarkdownBlock(text) {
+        const lines = String(text || "").split(/\\r?\\n/);
+        const chunks = [];
+        const unorderedListItems = [];
+        const orderedListItems = [];
+        const paragraphLines = [];
+        const codeLines = [];
+        let inCodeBlock = false;
+
+        function flushParagraph() {
+          if (!paragraphLines.length) {
+            return;
+          }
+          chunks.push("<p>" + renderInlineMarkup(paragraphLines.join(" ")) + "</p>");
+          paragraphLines.length = 0;
+        }
+
+        function flushUnorderedList() {
+          if (!unorderedListItems.length) {
+            return;
+          }
+          const items = unorderedListItems
+            .map(function (item) {
+              return "<li>" + renderInlineMarkup(item) + "</li>";
+            })
+            .join("");
+          chunks.push("<ul>" + items + "</ul>");
+          unorderedListItems.length = 0;
+        }
+
+        function flushOrderedList() {
+          if (!orderedListItems.length) {
+            return;
+          }
+          const items = orderedListItems
+            .map(function (item) {
+              return "<li>" + renderInlineMarkup(item) + "</li>";
+            })
+            .join("");
+          chunks.push("<ol>" + items + "</ol>");
+          orderedListItems.length = 0;
+        }
+
+        function flushCodeBlock() {
+          if (!codeLines.length) {
+            inCodeBlock = false;
+            return;
+          }
+          chunks.push("<pre><code>" + escapeHtml(codeLines.join("\\n")) + "</code></pre>");
+          codeLines.length = 0;
+          inCodeBlock = false;
+        }
+
+        lines.forEach(function (rawLine) {
+          const line = rawLine.trim();
+          if (inCodeBlock) {
+            if (line.startsWith("```")) {
+              flushCodeBlock();
+            } else {
+              codeLines.push(rawLine.replace(/\\s+$/, ""));
+            }
+            return;
+          }
+          if (line.startsWith("```") && line.endsWith("```") && line.length > 6) {
+            flushParagraph();
+            flushUnorderedList();
+            flushOrderedList();
+            chunks.push("<pre><code>" + escapeHtml(line.slice(3, -3).trim()) + "</code></pre>");
+            return;
+          }
+          if (line.startsWith("```")) {
+            flushParagraph();
+            flushUnorderedList();
+            flushOrderedList();
+            inCodeBlock = true;
+            codeLines.length = 0;
+            return;
+          }
+          if (!line) {
+            flushParagraph();
+            flushUnorderedList();
+            flushOrderedList();
+            return;
+          }
+          if (line.startsWith("### ")) {
+            flushParagraph();
+            flushUnorderedList();
+            flushOrderedList();
+            chunks.push("<h5>" + renderInlineMarkup(line.slice(4)) + "</h5>");
+            return;
+          }
+          if (line.startsWith("## ")) {
+            flushParagraph();
+            flushUnorderedList();
+            flushOrderedList();
+            chunks.push("<h4>" + renderInlineMarkup(line.slice(3)) + "</h4>");
+            return;
+          }
+          if (line.startsWith("# ")) {
+            flushParagraph();
+            flushUnorderedList();
+            flushOrderedList();
+            chunks.push("<h3>" + renderInlineMarkup(line.slice(2)) + "</h3>");
+            return;
+          }
+          if (line.startsWith("- ")) {
+            flushParagraph();
+            flushOrderedList();
+            unorderedListItems.push(line.slice(2));
+            return;
+          }
+          const orderedMatch = line.match(/^\\d+\\.\\s+(.*)$/);
+          if (orderedMatch) {
+            flushParagraph();
+            flushUnorderedList();
+            orderedListItems.push(orderedMatch[1]);
+            return;
+          }
+          flushUnorderedList();
+          flushOrderedList();
+          paragraphLines.push(line);
+        });
+
+        flushParagraph();
+        flushUnorderedList();
+        flushOrderedList();
+        flushCodeBlock();
+        return "<div class='rendered-markdown'>" + chunks.join("") + "</div>";
+      }
+
+      function renderPlainTextBlock(text) {
+        const paragraphs = String(text || "")
+          .split(/\\r?\\n\\s*\\r?\\n/)
+          .map(function (paragraph) {
+            return paragraph.trim();
+          })
+          .filter(Boolean);
+        if (!paragraphs.length) {
+          return "<div class='rendered-markdown'><p></p></div>";
+        }
+        const chunks = paragraphs.map(function (paragraph) {
+          return "<p>" + escapeHtml(paragraph).replace(/\\r?\\n/g, "<br>") + "</p>";
+        });
+        return "<div class='rendered-markdown'>" + chunks.join("") + "</div>";
+      }
+
+      function normalizeSelectionText(text) {
+        return String(text || "")
+          .replace(/\\u00a0/g, " ")
+          .replace(/\\r\\n?/g, "\\n")
+          .trim();
+      }
+
+      function selectionPreview(text) {
+        const compact = normalizeSelectionText(text).replace(/\\s+/g, " ");
+        if (!compact) {
+          return "";
+        }
+        return compact.length > 160 ? compact.slice(0, 157) + "..." : compact;
+      }
+
+      function selectedTextFromDocument() {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+          return "";
+        }
+        const range = selection.getRangeAt(0);
+        const container = range.commonAncestorContainer;
+        const element = container && container.nodeType === Node.ELEMENT_NODE
+          ? container
+          : (container ? container.parentElement : null);
+        if (!element || !document.body.contains(element)) {
+          return "";
+        }
+        if (element.closest("textarea, input, button")) {
+          return "";
+        }
+        return normalizeSelectionText(selection.toString());
+      }
+
       function normalizeMessage(item) {
         if (!item || (item.role !== "user" && item.role !== "assistant") || typeof item.content !== "string") {
           return null;
@@ -3940,7 +4319,11 @@ def render_topic_chat_script() -> str:
 
           const content = document.createElement("div");
           content.className = "topic-chat-content";
-          content.textContent = item.content;
+          if (item.role === "assistant") {
+            content.innerHTML = renderMarkdownBlock(item.content);
+          } else {
+            content.innerHTML = renderPlainTextBlock(item.content);
+          }
 
           article.appendChild(meta);
           article.appendChild(content);
@@ -3954,6 +4337,7 @@ def render_topic_chat_script() -> str:
         const sendButton = root.querySelector("[data-topic-chat-submit]");
         const deleteButton = root.querySelector("[data-topic-chat-delete]");
         const newButton = root.querySelector("[data-topic-chat-new]");
+        const clearSelectionButton = root.querySelector("[data-topic-chat-selection-clear]");
         if (textarea) {
           textarea.disabled = disabled;
         }
@@ -3965,6 +4349,9 @@ def render_topic_chat_script() -> str:
         }
         if (newButton) {
           newButton.disabled = disabled;
+        }
+        if (clearSelectionButton) {
+          clearSelectionButton.disabled = disabled;
         }
       }
 
@@ -4014,10 +4401,22 @@ def render_topic_chat_script() -> str:
         textarea.value = typeof drafts[session.id] === "string" ? drafts[session.id] : "";
       }
 
-      function renderState(root, state, initialized, pending) {
+      function renderSelectionContext(root, selectedContext) {
+        const strip = root.querySelector("[data-topic-chat-selection-strip]");
+        const preview = root.querySelector("[data-topic-chat-selection-preview]");
+        if (!strip || !preview) {
+          return;
+        }
+        const hasSelection = Boolean(normalizeSelectionText(selectedContext));
+        strip.hidden = !hasSelection;
+        preview.textContent = hasSelection ? selectionPreview(selectedContext) : "";
+      }
+
+      function renderState(root, state, initialized, pending, selectedContext) {
         renderSessions(root, state, pending);
         renderHistory(root, activeSession(state));
         restoreDraft(root, state);
+        renderSelectionContext(root, selectedContext);
         updateDeleteButton(root, state, initialized, pending);
       }
 
@@ -4076,11 +4475,12 @@ def render_topic_chat_script() -> str:
         const newButton = root.querySelector("[data-topic-chat-new]");
         const deleteButton = root.querySelector("[data-topic-chat-delete]");
         let pending = false;
+        let selectedContext = "";
         let state = loadState(root);
         state = coalesceUntitledSessions(root, state);
         saveState(root, state);
 
-        renderState(root, state, initialized, pending);
+        renderState(root, state, initialized, pending, selectedContext);
 
         if (textarea) {
           textarea.addEventListener("input", function () {
@@ -4099,6 +4499,18 @@ def render_topic_chat_script() -> str:
           });
         }
 
+        document.addEventListener("selectionchange", function () {
+          if (!initialized) {
+            return;
+          }
+          const nextSelection = selectedTextFromDocument();
+          if (!nextSelection) {
+            return;
+          }
+          selectedContext = nextSelection;
+          renderSelectionContext(root, selectedContext);
+        });
+
         if (newButton) {
           newButton.addEventListener("click", function () {
             if (!initialized || pending) {
@@ -4114,7 +4526,7 @@ def render_topic_chat_script() -> str:
               state.active_session_id = session.id;
             }
             saveState(root, state);
-            renderState(root, state, initialized, pending);
+            renderState(root, state, initialized, pending, selectedContext);
             setStatus(root, "", "");
             if (textarea) {
               textarea.focus();
@@ -4142,7 +4554,7 @@ def render_topic_chat_script() -> str:
             });
             state.active_session_id = state.sessions[0] ? state.sessions[0].id : "";
             saveState(root, state);
-            renderState(root, state, initialized, pending);
+            renderState(root, state, initialized, pending, selectedContext);
             setStatus(root, "Chat deleted.", "success");
           });
         }
@@ -4156,7 +4568,15 @@ def render_topic_chat_script() -> str:
             persistDraft(root, state);
             state.active_session_id = sessionButton.getAttribute("data-topic-chat-session") || "";
             saveState(root, state);
-            renderState(root, state, initialized, pending);
+            renderState(root, state, initialized, pending, selectedContext);
+            setStatus(root, "", "");
+            return;
+          }
+
+          const clearSelectionButton = event.target.closest("[data-topic-chat-selection-clear]");
+          if (clearSelectionButton) {
+            selectedContext = "";
+            renderSelectionContext(root, selectedContext);
             setStatus(root, "", "");
             return;
           }
@@ -4189,6 +4609,7 @@ def render_topic_chat_script() -> str:
           const session = activeSession(state);
           const targetSessionId = session.id;
           const priorHistory = session.messages.slice();
+          const selectionContextForRequest = selectedContext;
           if (session.title === "New chat" && session.messages.length === 0) {
             session.title = autoTitle(message);
           }
@@ -4198,7 +4619,7 @@ def render_topic_chat_script() -> str:
           session.updated_at = Date.now();
           saveState(root, state);
           pending = true;
-          renderState(root, state, initialized, pending);
+          renderState(root, state, initialized, pending, selectedContext);
           textarea.value = "";
           clearDraft(root, targetSessionId);
           setStatus(root, "Asking the model...", "");
@@ -4215,6 +4636,7 @@ def render_topic_chat_script() -> str:
                   return { role: item.role, content: item.content };
                 }),
                 current_step: root.getAttribute("data-current-step") || "",
+                selection_context: selectionContextForRequest,
               }),
             });
             await readTopicChatStream(response, function (payload) {
@@ -4256,6 +4678,10 @@ def render_topic_chat_script() -> str:
             if (!streamCompleted) {
               throw new Error("Topic chat stream ended before the assistant finished replying.");
             }
+            if (selectionContextForRequest && selectedContext === selectionContextForRequest) {
+              selectedContext = "";
+              renderSelectionContext(root, selectedContext);
+            }
             setStatus(root, "Reply ready.", "success");
           } catch (error) {
             const replySession = state.sessions.find(function (item) {
@@ -4275,7 +4701,7 @@ def render_topic_chat_script() -> str:
             setStatus(root, error && error.message ? error.message : "Topic chat request failed.", "error");
           } finally {
             pending = false;
-            renderState(root, state, initialized, pending);
+            renderState(root, state, initialized, pending, selectedContext);
             setComposerDisabled(root, false);
             textarea.focus();
           }
@@ -4296,6 +4722,8 @@ def render_panel_resize_script() -> str:
     (function () {
       const leftKey = "learning-agent-left-rail-width";
       const rightKey = "learning-agent-right-rail-width";
+      const leftCollapsedKey = "learning-agent-left-rail-collapsed";
+      const rightCollapsedKey = "learning-agent-right-rail-collapsed";
       const minWidth = 208;
       const maxWidth = 340;
       const disabledQuery = window.matchMedia("(max-width: 1220px)");
@@ -4318,6 +4746,34 @@ def render_panel_resize_script() -> str:
         return Number.isFinite(parsed) ? clamp(parsed) : fallback;
       }
 
+      function collapsedKey(side) {
+        return side === "left" ? leftCollapsedKey : rightCollapsedKey;
+      }
+
+      function readCollapsed(side) {
+        return window.localStorage.getItem(collapsedKey(side)) === "true";
+      }
+
+      function writeCollapsed(side, collapsed) {
+        window.localStorage.setItem(collapsedKey(side), collapsed ? "true" : "false");
+      }
+
+      function applyCollapsedState(side, collapsed) {
+        document.body.classList.toggle(side + "-rail-collapsed", collapsed);
+      }
+
+      function syncToggleButton(button, collapsed) {
+        if (!button) {
+          return;
+        }
+        const showLabel = button.getAttribute("data-sidebar-toggle-show") || "Show";
+        const hideLabel = button.getAttribute("data-sidebar-toggle-hide") || "Hide";
+        const label = collapsed ? showLabel : hideLabel;
+        button.setAttribute("aria-pressed", collapsed ? "false" : "true");
+        button.setAttribute("aria-label", label);
+        button.setAttribute("title", label);
+      }
+
       function resetForNarrow() {
         document.documentElement.style.removeProperty("--left-rail-width");
         document.documentElement.style.removeProperty("--right-rail-width");
@@ -4327,11 +4783,17 @@ def render_panel_resize_script() -> str:
         const shell = document.querySelector(".app-content-v3");
         const leftHandle = document.querySelector("[data-panel-resizer='left']");
         const rightHandle = document.querySelector("[data-panel-resizer='right']");
+        const leftToggle = document.querySelector("[data-sidebar-toggle='left']");
+        const rightToggle = document.querySelector("[data-sidebar-toggle='right']");
         if (!shell || !leftHandle || !rightHandle) {
           return;
         }
 
         function applyStoredWidths() {
+          applyCollapsedState("left", readCollapsed("left"));
+          applyCollapsedState("right", readCollapsed("right"));
+          syncToggleButton(leftToggle, readCollapsed("left"));
+          syncToggleButton(rightToggle, readCollapsed("right"));
           if (disabledQuery.matches) {
             resetForNarrow();
             return;
@@ -4341,7 +4803,7 @@ def render_panel_resize_script() -> str:
         }
 
         function startResize(side, handle, startEvent) {
-          if (disabledQuery.matches) {
+          if (disabledQuery.matches || readCollapsed(side)) {
             return;
           }
           startEvent.preventDefault();
@@ -4377,6 +4839,22 @@ def render_panel_resize_script() -> str:
         });
         rightHandle.addEventListener("pointerdown", function (event) {
           startResize("right", rightHandle, event);
+        });
+
+        [leftToggle, rightToggle].forEach(function (button) {
+          if (!button) {
+            return;
+          }
+          button.addEventListener("click", function () {
+            const side = button.getAttribute("data-sidebar-toggle");
+            if (!side) {
+              return;
+            }
+            const nextCollapsed = !readCollapsed(side);
+            writeCollapsed(side, nextCollapsed);
+            applyCollapsedState(side, nextCollapsed);
+            syncToggleButton(button, nextCollapsed);
+          });
         });
 
         if (typeof disabledQuery.addEventListener === "function") {
@@ -5532,6 +6010,23 @@ def render_topic_chat_panel(
         </div>
       </section>
       <form class="assistant-section-v3 assistant-composer-v3" data-topic-chat-form>
+        <div class="topic-chat-context-strip" data-topic-chat-selection-strip hidden>
+          <div class="topic-chat-context-chip">
+            <div class="topic-chat-context-copy">
+              <span class="topic-chat-context-kicker">Selection Context</span>
+              <p class="topic-chat-context-preview" data-topic-chat-selection-preview></p>
+            </div>
+            <button
+              type="button"
+              class="secondary topic-chat-context-clear"
+              data-topic-chat-selection-clear
+              aria-label="Remove selected text context"
+              title="Remove selected text context"
+            >
+              ×
+            </button>
+          </div>
+        </div>
         <label>Message
           <textarea name="topic_chat_message" placeholder="Ask about the current week, files, metrics, or the active question." data-topic-chat-textarea{disabled_attr}></textarea>
         </label>
@@ -6657,7 +7152,8 @@ def render_record_card(title: str, rows: list[tuple[str, str] | None], empty_mes
 def render_markdown_block(text: str) -> str:
     lines = text.splitlines()
     chunks: list[str] = []
-    list_items: list[str] = []
+    unordered_list_items: list[str] = []
+    ordered_list_items: list[str] = []
     paragraph_lines: list[str] = []
     code_lines: list[str] = []
     in_code_block = False
@@ -6668,12 +7164,19 @@ def render_markdown_block(text: str) -> str:
         chunks.append(f"<p>{render_inline_markup(' '.join(paragraph_lines))}</p>")
         paragraph_lines.clear()
 
-    def flush_list() -> None:
-        if not list_items:
+    def flush_unordered_list() -> None:
+        if not unordered_list_items:
             return
-        items = "".join(f"<li>{render_inline_markup(item)}</li>" for item in list_items)
+        items = "".join(f"<li>{render_inline_markup(item)}</li>" for item in unordered_list_items)
         chunks.append(f"<ul>{items}</ul>")
-        list_items.clear()
+        unordered_list_items.clear()
+
+    def flush_ordered_list() -> None:
+        if not ordered_list_items:
+            return
+        items = "".join(f"<li>{render_inline_markup(item)}</li>" for item in ordered_list_items)
+        chunks.append(f"<ol>{items}</ol>")
+        ordered_list_items.clear()
 
     def flush_code_block() -> None:
         nonlocal in_code_block
@@ -6694,43 +7197,58 @@ def render_markdown_block(text: str) -> str:
             continue
         if line.startswith("```") and line.endswith("```") and len(line) > 6:
             flush_paragraph()
-            flush_list()
+            flush_unordered_list()
+            flush_ordered_list()
             chunks.append(f"<pre><code>{escape(line[3:-3].strip())}</code></pre>")
             continue
         if line.startswith("```"):
             flush_paragraph()
-            flush_list()
+            flush_unordered_list()
+            flush_ordered_list()
             in_code_block = True
             code_lines.clear()
             continue
         if not line:
             flush_paragraph()
-            flush_list()
+            flush_unordered_list()
+            flush_ordered_list()
             continue
         if line.startswith("### "):
             flush_paragraph()
-            flush_list()
+            flush_unordered_list()
+            flush_ordered_list()
             chunks.append(f"<h5>{render_inline_markup(line[4:])}</h5>")
             continue
         if line.startswith("## "):
             flush_paragraph()
-            flush_list()
+            flush_unordered_list()
+            flush_ordered_list()
             chunks.append(f"<h4>{render_inline_markup(line[3:])}</h4>")
             continue
         if line.startswith("# "):
             flush_paragraph()
-            flush_list()
+            flush_unordered_list()
+            flush_ordered_list()
             chunks.append(f"<h3>{render_inline_markup(line[2:])}</h3>")
             continue
         if line.startswith("- "):
             flush_paragraph()
-            list_items.append(line[2:])
+            flush_ordered_list()
+            unordered_list_items.append(line[2:])
             continue
-        flush_list()
+        ordered_match = re.match(r"^\d+\.\s+(.*)$", line)
+        if ordered_match:
+            flush_paragraph()
+            flush_unordered_list()
+            ordered_list_items.append(ordered_match.group(1))
+            continue
+        flush_unordered_list()
+        flush_ordered_list()
         paragraph_lines.append(line)
 
     flush_paragraph()
-    flush_list()
+    flush_unordered_list()
+    flush_ordered_list()
     flush_code_block()
     return f"<div class='rendered-markdown'>{''.join(chunks)}</div>"
 

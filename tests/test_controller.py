@@ -779,6 +779,29 @@ def test_answer_topic_chat_builds_learn_context(monkeypatch, tmp_path):
     assert "Selected question prompt: What is the difference between prefill and decode?" not in call["context"]
 
 
+def test_answer_topic_chat_includes_selected_ui_text(monkeypatch, tmp_path):
+    controller, _target_repo = make_controller(tmp_path, monkeypatch)
+    provider = ChatCapturingProvider()
+    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: provider)
+    controller.initialize()
+    controller.generate_learning_assist()
+
+    result = controller.answer_topic_chat(
+        message="Explain this.",
+        history=[],
+        current_step="learn",
+        selection_context="QKV projections map hidden states into query, key, and value spaces.",
+    )
+
+    assert result["reply"] == "Topic tutor: Explain this."
+    assert len(provider.chat_calls) == 1
+    call = provider.chat_calls[0]
+    assert "Selected UI text for this message:" in call["context"]
+    assert "<<<SELECTED_TEXT" in call["context"]
+    assert "QKV projections map hidden states into query, key, and value spaces." in call["context"]
+    assert "SELECTED_TEXT>>>" in call["context"]
+
+
 def test_stream_topic_chat_emits_events_and_context(monkeypatch, tmp_path):
     controller, _target_repo = make_controller(tmp_path, monkeypatch)
     provider = StreamingChatProvider()

@@ -1,7 +1,15 @@
 import json
 
 from learning_agent.errors import LearningAgentError
-from learning_agent.ui import format_resource_text_html, render_markdown_block, render_page, run_action, run_topic_chat, run_topic_chat_stream
+from learning_agent.ui import (
+    format_resource_text_html,
+    render_markdown_block,
+    render_page,
+    render_topic_chat_script,
+    run_action,
+    run_topic_chat,
+    run_topic_chat_stream,
+)
 
 
 def _extra_weeks(start: int = 2, end: int = 8) -> str:
@@ -231,6 +239,22 @@ class FakeProvider:
 
     def answer_topic_chat(self, week_spec, context, history, message):
         return f"Tutor reply about: {message}"
+
+
+class TopicChatContextCapturingProvider(FakeProvider):
+    def __init__(self):
+        self.chat_calls = []
+
+    def answer_topic_chat(self, week_spec, context, history, message):
+        self.chat_calls.append(
+            {
+                "week_spec": week_spec,
+                "context": context,
+                "history": history,
+                "message": message,
+            }
+        )
+        return super().answer_topic_chat(week_spec, context, history, message)
 
 
 class CountingProvider(FakeProvider):
@@ -557,6 +581,14 @@ def test_render_markdown_block_renders_fenced_code_blocks():
     assert "```" not in rendered
 
 
+def test_render_markdown_block_renders_ordered_lists_with_bold_items():
+    rendered = render_markdown_block("1. **QKV Projections**\n2. **Attention Scores**")
+
+    assert "<ol>" in rendered
+    assert "<strong>QKV Projections</strong>" in rendered
+    assert "**QKV Projections**" not in rendered
+
+
 def test_format_resource_text_html_strips_leading_dash_marker():
     rendered = format_resource_text_html("- **Example resource.**")
 
@@ -648,6 +680,100 @@ def test_run_topic_chat_returns_json(monkeypatch, tmp_path):
     assert payload["week"] == 1
     assert payload["context_label"] == "Week 1 · Learn"
     assert payload["reply"] == "Tutor reply about: How should I measure tokens per second?"
+
+
+def test_run_topic_chat_includes_selected_text_context(monkeypatch, tmp_path):
+    write_config(tmp_path)
+    write_roadmap(tmp_path)
+    (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+    provider = TopicChatContextCapturingProvider()
+    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: provider)
+
+    assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
+    assert run_action("learning_generate", {"action": ["learning_generate"]}) == "Generated Learning Assist for Week 1."
+
+    payload = run_topic_chat(
+        {
+            "message": "Explain this in plain English.",
+            "history": [],
+            "current_step": "learn",
+            "selection_context": "Decoder-only models reuse KV cache state during generation.",
+        }
+    )
+
+    assert payload["reply"] == "Tutor reply about: Explain this in plain English."
+    assert len(provider.chat_calls) == 1
+    assert "Selected UI text for this message:" in provider.chat_calls[0]["context"]
+    assert "Decoder-only models reuse KV cache state during generation." in provider.chat_calls[0]["context"]
+
+
+def test_render_topic_chat_script_formats_assistant_markdown():
+    script = render_topic_chat_script()
+
+    assert "function renderMarkdownBlock(text)" in script
+    assert "function renderPlainTextBlock(text)" in script
+    assert "function selectedTextFromDocument()" in script
+    assert 'content.innerHTML = renderMarkdownBlock(item.content);' in script
+    assert 'content.innerHTML = renderPlainTextBlock(item.content);' in script
+    assert "selection_context: selectionContextForRequest" in script
+
+
+def test_render_page_includes_topic_chat_selection_chip(monkeypatch, tmp_path):
+    write_config(tmp_path)
+    write_roadmap(tmp_path)
+    (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: FakeProvider())
+
+    assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
+
+    page = render_page()
+
+    assert "Selection Context" in page
+    assert "data-topic-chat-selection-preview" in page
+    assert "data-topic-chat-selection-clear" in page
+
+
+def test_render_page_includes_sidebar_toggle_controls(monkeypatch, tmp_path):
+    write_config(tmp_path)
+    write_roadmap(tmp_path)
+    (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: FakeProvider())
+
+    assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
+
+    page = render_page()
+
+    assert 'data-sidebar-toggle="left"' in page
+    assert 'data-sidebar-toggle="right"' in page
+    assert "sidebar-edge-toggle-v3-left" in page
+    assert "sidebar-edge-toggle-v3-right" in page
+    assert 'aria-label="Hide Guide"' in page
+    assert 'aria-label="Hide Assistant"' in page
+    assert "learning-agent-left-rail-collapsed" in page
+    assert "learning-agent-right-rail-collapsed" in page
+
+
+def test_render_page_uses_taller_assistant_chat_shell(monkeypatch, tmp_path):
+    write_config(tmp_path)
+    write_roadmap(tmp_path)
+    (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: FakeProvider())
+
+    assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
+
+    page = render_page()
+
+    assert "min-height: 500px;" in page
+    assert "min-height: 320px;" in page
+    assert "max-height: min(56vh, 640px);" in page
 
 
 def test_run_topic_chat_stream_returns_events(monkeypatch, tmp_path):
