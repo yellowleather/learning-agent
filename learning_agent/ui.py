@@ -23,6 +23,7 @@ ICON_PATH = ASSET_ROOT / "icon.png"
 DEFAULT_COURSE_WEEKS = 8
 MARATHON_TOTAL_MILES = 26.2
 MARATHON_RUNNER_POSITION_NUDGE_PERCENT = 0.35
+THEME_STORAGE_KEY = "learning-agent-theme-preference"
 
 
 def serve_ui(host: str = DEFAULT_UI_HOST, port: int = DEFAULT_UI_PORT) -> None:
@@ -54,8 +55,16 @@ def build_handler():
             params = parse_qs(parsed.query)
             message = first_param(params, "message")
             error = first_param(params, "error")
+            question_message = first_param(params, "question_message")
+            question_error = first_param(params, "question_error")
             selected_question_id = first_param(params, "question_id")
-            page = render_page(message=message, error=error, selected_question_id=selected_question_id)
+            page = render_page(
+                message=message,
+                error=error,
+                question_message=question_message,
+                question_error=question_error,
+                selected_question_id=selected_question_id,
+            )
             self._send_html(page)
 
         def do_POST(self) -> None:  # noqa: N802
@@ -81,13 +90,40 @@ def build_handler():
             length = int(self.headers.get("Content-Length", "0"))
             form = parse_qs(self.rfile.read(length).decode("utf-8"))
             action = first_param(form, "action")
+            question_id = first_param(form, "question_id")
             try:
-                message = run_action(action, form)
-                self._redirect(message=message, query={"question_id": first_param(form, "question_id")})
+                if action == "learning_answer":
+                    result = submit_learning_answer(form)
+                    feedback_key = "question_message" if result_passed(result) else "question_error"
+                    self._redirect(
+                        query={
+                            "question_id": question_id,
+                            feedback_key: learning_answer_feedback_message(result),
+                        }
+                    )
+                else:
+                    message = run_action(action, form)
+                    self._redirect(message=message, query={"question_id": question_id})
             except LearningAgentError as exc:
-                self._redirect(error=str(exc), query={"question_id": first_param(form, "question_id")})
+                if action == "learning_answer":
+                    self._redirect(
+                        query={
+                            "question_id": question_id,
+                            "question_error": str(exc),
+                        }
+                    )
+                else:
+                    self._redirect(error=str(exc), query={"question_id": question_id})
             except Exception as exc:  # pragma: no cover
-                self._redirect(error=f"Unexpected error: {exc}", query={"question_id": first_param(form, "question_id")})
+                if action == "learning_answer":
+                    self._redirect(
+                        query={
+                            "question_id": question_id,
+                            "question_error": f"Unexpected error: {exc}",
+                        }
+                    )
+                else:
+                    self._redirect(error=f"Unexpected error: {exc}", query={"question_id": question_id})
 
         def log_message(self, format: str, *args) -> None:  # noqa: A003
             return
@@ -177,6 +213,21 @@ def get_controller() -> LearningController:
     return LearningController(repo_root, config)
 
 
+def submit_learning_answer(form: Dict[str, list[str]]) -> Any:
+    controller = get_controller()
+    question_id = first_param(form, "question_id").strip()
+    answer = first_param(form, "learning_answer").strip()
+    if not question_id:
+        raise LearningAgentError("Question id cannot be empty.")
+    if not answer:
+        raise LearningAgentError("Learning answer cannot be empty.")
+    return controller.answer_learning_question(question_id, answer)
+
+
+def learning_answer_feedback_message(result: Any) -> str:
+    return "Question passed." if result_passed(result) else "Question failed."
+
+
 def run_action(action: str, form: Dict[str, list[str]]) -> str:
     if not action:
         raise LearningAgentError("Missing action.")
@@ -189,14 +240,8 @@ def run_action(action: str, form: Dict[str, list[str]]) -> str:
         session = controller.generate_learning_assist()
         return f"Generated Learning Assist for Week {session.week}."
     if action == "learning_answer":
-        question_id = first_param(form, "question_id").strip()
-        answer = first_param(form, "learning_answer").strip()
-        if not question_id:
-            raise LearningAgentError("Question id cannot be empty.")
-        if not answer:
-            raise LearningAgentError("Learning answer cannot be empty.")
-        result = controller.answer_learning_question(question_id, answer)
-        return "Question passed." if result_passed(result) else "Question failed."
+        result = submit_learning_answer(form)
+        return learning_answer_feedback_message(result)
     if action == "task_generate":
         task = controller.generate_task()
         return f"Generated task for Week {task.task.week}."
@@ -313,6 +358,8 @@ def run_topic_chat(payload: dict[str, Any]) -> dict[str, Any]:
 def render_page(
     message: Optional[str] = None,
     error: Optional[str] = None,
+    question_message: Optional[str] = None,
+    question_error: Optional[str] = None,
     selected_question_id: Optional[str] = None,
 ) -> str:
     course_total_weeks = resolve_course_total_weeks()
@@ -336,8 +383,10 @@ def render_page(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Learning Agent</title>
   <link rel="icon" type="image/png" href="/favicon.ico">
+  {render_theme_script()}
   <style>
     :root {{
+      color-scheme: light;
       --bg: #f6f8fb;
       --surface: rgba(255, 255, 255, 0.92);
       --surface-strong: rgba(255, 255, 255, 0.98);
@@ -366,6 +415,29 @@ def render_page(
       --sidebar-width: 340px;
       --course-bar-space: 88px;
     }}
+    html[data-theme="dark"] {{
+      color-scheme: dark;
+      --bg: #0e1520;
+      --surface: rgba(17, 24, 36, 0.9);
+      --surface-strong: rgba(17, 24, 36, 0.98);
+      --surface-alt: #162131;
+      --surface-utility: rgba(17, 24, 36, 0.82);
+      --border: #2a3a52;
+      --border-strong: #36506f;
+      --text: #e7eef9;
+      --muted: #9fb0c6;
+      --accent: #74b0ff;
+      --accent-dark: #c6ddff;
+      --accent-soft: rgba(70, 115, 187, 0.22);
+      --danger: #ff9ab0;
+      --danger-soft: rgba(116, 35, 54, 0.28);
+      --success: #7ed9b1;
+      --success-soft: rgba(28, 92, 68, 0.28);
+      --warning: #f0c27e;
+      --warning-soft: rgba(120, 82, 30, 0.28);
+      --shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+      --shadow-soft: 0 10px 26px rgba(0, 0, 0, 0.28);
+    }}
     * {{ box-sizing: border-box; }}
     body {{
       margin: 0;
@@ -374,6 +446,12 @@ def render_page(
         radial-gradient(circle at top center, rgba(49, 114, 216, 0.1), transparent 28%),
         linear-gradient(180deg, #fbfcfe 0%, #f4f7fb 42%, #f3f6fb 100%);
       color: var(--text);
+      transition: background 180ms ease, color 180ms ease;
+    }}
+    html[data-theme="dark"] body {{
+      background:
+        radial-gradient(circle at top center, rgba(116, 176, 255, 0.16), transparent 30%),
+        linear-gradient(180deg, #0d131c 0%, #101926 44%, #0f1723 100%);
     }}
     main {{
       width: min(1320px, calc(100vw - 40px));
@@ -922,6 +1000,29 @@ def render_page(
       background: var(--danger-soft);
       color: var(--danger);
     }}
+    .question-validator-feedback {{
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid rgba(191, 208, 220, 0.72);
+      background: rgba(248, 251, 255, 0.94);
+    }}
+    .question-validator-feedback.failed {{
+      border-color: rgba(196, 92, 117, 0.35);
+      background: rgba(255, 243, 246, 0.96);
+    }}
+    .question-validator-feedback h4,
+    .question-validator-feedback p {{
+      margin: 0;
+    }}
+    .question-validator-feedback ul {{
+      margin: 0;
+      padding-left: 18px;
+      display: grid;
+      gap: 6px;
+    }}
     .help-panel {{
       margin-bottom: 18px;
     }}
@@ -1205,6 +1306,30 @@ def render_page(
       flex-wrap: wrap;
       gap: 10px;
       align-items: center;
+    }}
+    .question-jump-form {{
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }}
+    .question-jump-form label {{
+      font-size: 0.88rem;
+      color: var(--muted);
+    }}
+    .question-jump-form input {{
+      width: 88px;
+      min-height: 42px;
+      padding: 0 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(178, 196, 206, 0.9);
+      background: rgba(255, 255, 255, 0.92);
+      font: inherit;
+    }}
+    .question-jump-form button {{
+      min-height: 42px;
+      padding: 0 14px;
     }}
     .question-step-link, .question-stepper .is-disabled {{
       min-width: 44px;
@@ -1918,6 +2043,28 @@ def render_page(
       justify-content: center;
       font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
       font-size: 0.82rem;
+    }}
+    .topbar-theme-toggle {{
+      width: auto;
+      min-width: 74px;
+      padding: 0 12px 0 10px;
+      gap: 8px;
+      font-weight: 700;
+    }}
+    .topbar-theme-toggle-indicator {{
+      width: 14px;
+      height: 14px;
+      border-radius: 999px;
+      flex-shrink: 0;
+      background: linear-gradient(135deg, #182537 50%, #ffd37a 50%);
+      box-shadow: inset 0 0 0 1px rgba(95, 112, 138, 0.35);
+    }}
+    html[data-theme="dark"] .topbar-theme-toggle-indicator {{
+      background: linear-gradient(135deg, #ffd37a 50%, #182537 50%);
+    }}
+    .topbar-theme-toggle-label {{
+      font-size: 0.76rem;
+      letter-spacing: 0.02em;
     }}
     .topbar-avatar {{
       width: 32px;
@@ -3200,6 +3347,301 @@ def render_page(
     .assistant-hidden {{
       display: none !important;
     }}
+    html[data-theme="dark"] .course-bar,
+    html[data-theme="dark"] .app-topbar-v3,
+    html[data-theme="dark"] .workspace-sidebar-v3 .panel,
+    html[data-theme="dark"] .marathon-strip-v3,
+    html[data-theme="dark"] .stepper-bar-v3,
+    html[data-theme="dark"] .assessment-grid-v3,
+    html[data-theme="dark"] .table-card-v3,
+    html[data-theme="dark"] .activity-card-v3,
+    html[data-theme="dark"] .progress-shell,
+    html[data-theme="dark"] .progress-card,
+    html[data-theme="dark"] .workflow-stage-card,
+    html[data-theme="dark"] .stage-surface,
+    html[data-theme="dark"] .rail-utility-card,
+    html[data-theme="dark"] .topic-chat-question-card,
+    html[data-theme="dark"] .topic-chat-thread-shell,
+    html[data-theme="dark"] .topic-chat-message,
+    html[data-theme="dark"] .topic-chat-context-chip,
+    html[data-theme="dark"] .question-validator-feedback,
+    html[data-theme="dark"] pre {{
+      background: var(--surface-strong);
+      border-color: var(--border);
+      box-shadow: var(--shadow-soft);
+    }}
+    html[data-theme="dark"] .topic-chat-message[data-role="assistant"] {{
+      background: rgba(17, 24, 36, 0.96);
+    }}
+    html[data-theme="dark"] .topic-chat-message[data-role="user"] {{
+      background: linear-gradient(180deg, rgba(42, 71, 110, 0.92), rgba(29, 49, 78, 0.96));
+    }}
+    html[data-theme="dark"] input,
+    html[data-theme="dark"] textarea,
+    html[data-theme="dark"] select,
+    html[data-theme="dark"] button.secondary,
+    html[data-theme="dark"] .button-link.secondary,
+    html[data-theme="dark"] .topbar-action-icon,
+    html[data-theme="dark"] .sidebar-edge-toggle-v3,
+    html[data-theme="dark"] .topic-chat-session,
+    html[data-theme="dark"] .topic-chat-suggestion,
+    html[data-theme="dark"] .workspace-chip,
+    html[data-theme="dark"] .workspace-environment-note-v3,
+    html[data-theme="dark"] .assessment-tag-v3,
+    html[data-theme="dark"] .concept-status-item-v3,
+    html[data-theme="dark"] .pill.subtle,
+    html[data-theme="dark"] .status-badge {{
+      background: rgba(21, 29, 42, 0.96);
+      border-color: var(--border);
+      color: var(--text);
+    }}
+    html[data-theme="dark"] .app-topbar-status {{
+      background: rgba(25, 37, 56, 0.98);
+      border-color: rgba(84, 114, 154, 0.72);
+      color: var(--accent-dark);
+    }}
+    html[data-theme="dark"] .status-badge.passed {{
+      background: var(--success-soft);
+      border-color: rgba(89, 170, 133, 0.65);
+      color: var(--success);
+    }}
+    html[data-theme="dark"] .status-badge.in_progress {{
+      background: var(--accent-soft);
+      border-color: rgba(92, 138, 196, 0.62);
+      color: var(--accent-dark);
+    }}
+    html[data-theme="dark"] .status-badge.failed {{
+      background: var(--danger-soft);
+      border-color: rgba(192, 95, 123, 0.58);
+      color: var(--danger);
+    }}
+    html[data-theme="dark"] .status-badge.draft {{
+      background: var(--warning-soft);
+      border-color: rgba(189, 142, 74, 0.56);
+      color: var(--warning);
+    }}
+    html[data-theme="dark"] .notice {{
+      background: rgba(69, 53, 30, 0.34);
+      border-color: rgba(128, 103, 63, 0.5);
+    }}
+    html[data-theme="dark"] .notice.success {{
+      background: var(--success-soft);
+    }}
+    html[data-theme="dark"] .notice.error {{
+      background: var(--danger-soft);
+    }}
+    html[data-theme="dark"] .question-validator-feedback.failed {{
+      background: rgba(104, 30, 47, 0.32);
+    }}
+    html[data-theme="dark"] .app-topbar-divider,
+    html[data-theme="dark"] .panel-resizer-v3::before {{
+      background: rgba(58, 77, 103, 0.88);
+    }}
+    html[data-theme="dark"] .panel-resizer-v3::after {{
+      background: rgba(90, 115, 150, 0.72);
+    }}
+    html[data-theme="dark"] .workspace-sidebar-v3 {{
+      background: rgba(13, 18, 28, 0.4);
+    }}
+    html[data-theme="dark"] #left-sidebar.workspace-sidebar-v3 {{
+      border-right-color: var(--border);
+    }}
+    html[data-theme="dark"] .workspace-sidebar-right-v3 {{
+      border-left-color: var(--border);
+    }}
+    html[data-theme="dark"] .marathon-marker-v3 {{
+      color: #a7b8ce;
+    }}
+    html[data-theme="dark"] .marathon-marker-v3::before {{
+      background: #4a678a;
+    }}
+    html[data-theme="dark"] .marathon-marker-v3::after {{
+      border-left-color: #5d7ea2;
+    }}
+    html[data-theme="dark"] .marathon-marker-v3.completed {{
+      color: #9dcbff;
+    }}
+    html[data-theme="dark"] .marathon-marker-v3.completed::before {{
+      background: #74b0ff;
+    }}
+    html[data-theme="dark"] .marathon-marker-v3.completed::after {{
+      border-left-color: #74b0ff;
+    }}
+    html[data-theme="dark"] .marathon-marker-v3.current,
+    html[data-theme="dark"] .marathon-marker-v3.finish {{
+      color: #eef4fc;
+    }}
+    html[data-theme="dark"] .progress-shell-line {{
+      background: linear-gradient(180deg, rgba(116, 176, 255, 0.54), rgba(58, 77, 103, 0.45));
+    }}
+    html[data-theme="dark"] .progress-node {{
+      background: rgba(90, 115, 150, 0.82);
+      border-color: rgba(17, 24, 36, 0.92);
+      box-shadow: 0 0 0 4px rgba(17, 24, 36, 0.34);
+    }}
+    html[data-theme="dark"] .progress-row.current .progress-card {{
+      background: rgba(20, 29, 43, 0.98);
+    }}
+    html[data-theme="dark"] .concept-status-item-v3 .status-missing,
+    html[data-theme="dark"] .topic-chat-session.active,
+    html[data-theme="dark"] .topic-chat-suggestion,
+    html[data-theme="dark"] .workspace-environment-note-v3,
+    html[data-theme="dark"] .workspace-chip strong {{
+      color: var(--accent-dark);
+    }}
+    /* ── Dark mode overrides for elements not covered above ── */
+    html[data-theme="dark"] .learn-orientation-panel {{
+      background: linear-gradient(180deg, rgba(22, 35, 56, 0.92), rgba(17, 27, 44, 0.96));
+      border-color: var(--border);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }}
+    html[data-theme="dark"] .reading-section {{
+      border-top-color: var(--border);
+    }}
+    html[data-theme="dark"] .reading-column {{
+      background: rgba(13, 19, 30, 0.6);
+      border-color: var(--border);
+    }}
+    html[data-theme="dark"] .subpanel {{
+      background: rgba(17, 24, 36, 0.72);
+    }}
+    html[data-theme="dark"] .learn-reading-section-v3 {{
+      background: rgba(17, 24, 36, 0.82);
+      border-color: var(--border);
+    }}
+    html[data-theme="dark"] .step-link {{
+      background: rgba(21, 29, 42, 0.82);
+      border-color: var(--border);
+      color: var(--text);
+    }}
+    html[data-theme="dark"] .step-link.current {{
+      background: var(--accent-soft);
+      border-color: rgba(92, 138, 196, 0.62);
+    }}
+    html[data-theme="dark"] .step-body {{
+      border-top-color: var(--border);
+    }}
+    html[data-theme="dark"] .key-value-item {{
+      background: rgba(21, 29, 42, 0.82);
+      border-color: var(--border);
+    }}
+    html[data-theme="dark"] .details-block {{
+      background: rgba(21, 29, 42, 0.82);
+      border-color: var(--border);
+    }}
+    html[data-theme="dark"] .question-links a {{
+      background: rgba(21, 29, 42, 0.82);
+      border-color: var(--border);
+      color: var(--text);
+    }}
+    html[data-theme="dark"] .stepper-number-v3 {{
+      background: rgba(21, 29, 42, 0.82);
+      border-color: var(--border);
+      color: var(--muted);
+    }}
+    html[data-theme="dark"] .assessment-side-v3 {{
+      background: rgba(14, 20, 31, 0.94);
+      border-left-color: var(--border);
+    }}
+    html[data-theme="dark"] .toolbar-button-v3 {{
+      background: rgba(21, 29, 42, 0.92);
+      border-color: var(--border);
+      color: var(--text);
+    }}
+    html[data-theme="dark"] .table-chip-v3 {{
+      background: rgba(32, 44, 62, 0.86);
+      border-color: var(--border);
+      color: var(--muted);
+    }}
+    html[data-theme="dark"] .table-chip-v3.complete {{
+      background: var(--success-soft);
+      border-color: rgba(89, 170, 133, 0.55);
+      color: var(--success);
+    }}
+    html[data-theme="dark"] .table-action-v3 {{
+      background: rgba(21, 29, 42, 0.88);
+      border-color: var(--border);
+      color: var(--text);
+    }}
+    html[data-theme="dark"] .progress-ring-v3 {{
+      background: conic-gradient(var(--accent) calc(var(--progress) * 1%), rgba(42, 58, 82, 0.9) 0);
+    }}
+    html[data-theme="dark"] .progress-ring-v3::before {{
+      background: rgba(14, 21, 33, 0.96);
+    }}
+    html[data-theme="dark"] .progress-step-dot-v3 {{
+      background: rgba(32, 44, 62, 0.9);
+      border-color: var(--border);
+    }}
+    html[data-theme="dark"] .sidebar-status-v3 {{
+      background: rgba(21, 29, 42, 0.94);
+      border-color: var(--border);
+      color: var(--muted);
+    }}
+    html[data-theme="dark"] .sidebar-status-v3.good {{
+      background: var(--success-soft);
+      color: var(--success);
+    }}
+    html[data-theme="dark"] .sidebar-status-v3.warn {{
+      background: var(--warning-soft);
+      color: var(--warning);
+    }}
+    html[data-theme="dark"] .sidebar-card-v3 {{
+      background: rgba(21, 29, 42, 0.96) !important;
+      border-color: var(--border) !important;
+    }}
+    html[data-theme="dark"] .sidebar-panel-minimal-v3 + .sidebar-panel-minimal-v3 {{
+      border-top-color: var(--border) !important;
+    }}
+    html[data-theme="dark"] .assistant-tabs-v3 {{
+      background: rgba(14, 20, 31, 0.88);
+    }}
+    html[data-theme="dark"] .assistant-tab-v3.active {{
+      background: rgba(28, 38, 56, 0.96);
+      color: var(--text);
+    }}
+    html[data-theme="dark"] .assistant-card-v3 {{
+      background: rgba(17, 24, 36, 0.96);
+      border-color: var(--border);
+    }}
+    html[data-theme="dark"] .assistant-prompt-v3 {{
+      background: rgba(21, 29, 42, 0.92);
+      border-color: var(--border);
+      color: var(--text);
+    }}
+    html[data-theme="dark"] .assistant-section-v3 + .assistant-section-v3 {{
+      border-top-color: var(--border);
+    }}
+    html[data-theme="dark"] .app-topbar-mark {{
+      background: rgba(21, 29, 42, 0.92);
+      border-color: var(--border);
+    }}
+    html[data-theme="dark"] .sidebar-edge-toggle-v3:hover {{
+      background: rgba(28, 38, 56, 0.98);
+      border-color: rgba(92, 138, 196, 0.72);
+    }}
+    html[data-theme="dark"] .sidebar-edge-toggle-v3[aria-pressed="false"] {{
+      background: rgba(25, 35, 52, 0.98);
+      border-color: rgba(84, 114, 154, 0.62);
+    }}
+    html[data-theme="dark"] .file-table-v3 th,
+    html[data-theme="dark"] .file-table-v3 td {{
+      border-bottom-color: var(--border);
+    }}
+    html[data-theme="dark"] .stepper-item-v3 + .stepper-item-v3 {{
+      border-top-color: var(--border);
+    }}
+    html[data-theme="dark"] .workspace-environment-note-v3 {{
+      background: rgba(21, 29, 42, 0.88);
+      color: var(--muted);
+    }}
+    html[data-theme="dark"] .required-question-marker {{
+      color: var(--danger);
+    }}
+    html[data-theme="dark"] .button-link.is-disabled {{
+      background: rgba(32, 44, 62, 0.88);
+      color: var(--muted);
+    }}
     @media (max-width: 1220px) {{
       .app-content-v3 {{
         grid-template-columns: 260px minmax(0, 1fr);
@@ -3289,10 +3731,10 @@ def render_page(
       }}
     }}
   </style>
-  {render_flash_cleanup_script(message, error)}
+  {render_flash_cleanup_script(message, error, question_message, question_error)}
   {render_summary_selection_script()}
   {render_reading_scroll_script()}
-  {render_question_navigation_script(status.get("week") if status else None, message)}
+  {render_question_navigation_script(status.get("week") if status else None, question_message)}
   {render_topic_chat_script()}
   {render_panel_resize_script()}
 </head>
@@ -3307,7 +3749,13 @@ def render_page(
         {render_notice(message, error)}
       {render_header(status, initialized, course_total_weeks)}
         {render_info_sections(initialized)}
-        {render_body(status, initialized, selected_question_id=selected_question_id)}
+        {render_body(
+            status,
+            initialized,
+            selected_question_id=selected_question_id,
+            question_message=question_message,
+            question_error=question_error,
+        )}
       </div>
       <div class="panel-resizer-v3" data-panel-resizer="right" aria-hidden="true"></div>
       {render_right_sidebar(status, initialized, selected_question_id=selected_question_id)}
@@ -3368,6 +3816,17 @@ def render_app_topbar(status: Optional[dict], initialized: bool) -> str:
         <label class="app-topbar-search" aria-label="Search">
           <input type="search" placeholder="Search">
         </label>
+        <button
+          type="button"
+          class="topbar-action-icon topbar-theme-toggle"
+          data-theme-toggle
+          aria-label="Switch to dark mode"
+          aria-pressed="false"
+          title="Switch to dark mode"
+        >
+          <span class="topbar-theme-toggle-indicator" aria-hidden="true"></span>
+          <span class="topbar-theme-toggle-label" data-theme-toggle-label>Dark</span>
+        </button>
         <span class="topbar-action-icon" aria-hidden="true">?</span>
         <span class="topbar-action-icon" aria-hidden="true">!</span>
         <span class="topbar-avatar" aria-label="User avatar">PE</span>
@@ -3714,8 +4173,13 @@ def render_notice(message: Optional[str], error: Optional[str]) -> str:
     return "".join(notices)
 
 
-def render_flash_cleanup_script(message: Optional[str], error: Optional[str]) -> str:
-    if not message and not error:
+def render_flash_cleanup_script(
+    message: Optional[str],
+    error: Optional[str],
+    question_message: Optional[str],
+    question_error: Optional[str],
+) -> str:
+    if not message and not error and not question_message and not question_error:
         return ""
     return """
   <script>
@@ -3723,9 +4187,95 @@ def render_flash_cleanup_script(message: Optional[str], error: Optional[str]) ->
       const url = new URL(window.location.href);
       url.searchParams.delete("message");
       url.searchParams.delete("error");
+      url.searchParams.delete("question_message");
+      url.searchParams.delete("question_error");
       const nextUrl = url.pathname + (url.search ? url.search : "") + url.hash;
       window.history.replaceState({}, document.title, nextUrl || "/");
     });
+</script>
+"""
+
+
+def render_theme_script() -> str:
+    return f"""
+  <script>
+    (function () {{
+      const storageKey = "{THEME_STORAGE_KEY}";
+      const root = document.documentElement;
+      const mediaQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+
+      function storedTheme() {{
+        try {{
+          const value = window.localStorage.getItem(storageKey);
+          return value === "dark" || value === "light" ? value : "";
+        }} catch (_error) {{
+          return "";
+        }}
+      }}
+
+      function resolvedTheme() {{
+        const stored = storedTheme();
+        if (stored) {{
+          return stored;
+        }}
+        return mediaQuery && mediaQuery.matches ? "dark" : "light";
+      }}
+
+      function applyTheme(theme) {{
+        const nextTheme = theme === "dark" ? "dark" : "light";
+        root.dataset.theme = nextTheme;
+        root.style.colorScheme = nextTheme;
+        const toggle = document.querySelector("[data-theme-toggle]");
+        if (!toggle) {{
+          return;
+        }}
+        const nextTitle = nextTheme === "dark" ? "Switch to light mode" : "Switch to dark mode";
+        const nextLabel = nextTheme === "dark" ? "Light" : "Dark";
+        toggle.setAttribute("aria-pressed", nextTheme === "dark" ? "true" : "false");
+        toggle.setAttribute("aria-label", nextTitle);
+        toggle.setAttribute("title", nextTitle);
+        toggle.dataset.themeCurrent = nextTheme;
+        const label = toggle.querySelector("[data-theme-toggle-label]");
+        if (label) {{
+          label.textContent = nextLabel;
+        }}
+      }}
+
+      function persistTheme(theme) {{
+        try {{
+          window.localStorage.setItem(storageKey, theme);
+        }} catch (_error) {{
+          return;
+        }}
+      }}
+
+      applyTheme(resolvedTheme());
+
+      document.addEventListener("DOMContentLoaded", function () {{
+        applyTheme(resolvedTheme());
+        const toggle = document.querySelector("[data-theme-toggle]");
+        if (toggle) {{
+          toggle.addEventListener("click", function () {{
+            const nextTheme = root.dataset.theme === "dark" ? "light" : "dark";
+            persistTheme(nextTheme);
+            applyTheme(nextTheme);
+          }});
+        }}
+      }});
+
+      if (mediaQuery) {{
+        const syncWithSystem = function () {{
+          if (!storedTheme()) {{
+            applyTheme(resolvedTheme());
+          }}
+        }};
+        if (typeof mediaQuery.addEventListener === "function") {{
+          mediaQuery.addEventListener("change", syncWithSystem);
+        }} else if (typeof mediaQuery.addListener === "function") {{
+          mediaQuery.addListener(syncWithSystem);
+        }}
+      }}
+    }})();
   </script>
 """
 
@@ -4870,9 +5420,9 @@ def render_panel_resize_script() -> str:
 """
 
 
-def render_question_navigation_script(current_week: Optional[int], message: Optional[str]) -> str:
+def render_question_navigation_script(current_week: Optional[int], question_message: Optional[str]) -> str:
     week_literal = "null" if current_week is None else str(current_week)
-    message_literal = json.dumps(message or "")
+    message_literal = json.dumps(question_message or "")
     script = """
   <script>
     (function () {
@@ -5058,6 +5608,32 @@ def render_question_navigation_script(current_week: Optional[int], message: Opti
           });
         });
 
+        document.querySelectorAll("[data-question-jump-form]").forEach(function (form) {
+          form.addEventListener("submit", function (event) {
+            event.preventDefault();
+            const input = form.querySelector("[data-question-jump-input]");
+            const rawValue = input ? input.value.trim() : "";
+            const targetNumber = Number(rawValue);
+            const targetLink = document.querySelector(
+              "[data-question-modal-link][data-question-order='" + String(targetNumber) + "']"
+            );
+
+            if (!Number.isInteger(targetNumber) || !targetLink) {
+              if (input) {
+                input.focus();
+                input.select();
+              }
+              return;
+            }
+
+            saveDraftNow();
+            const href = targetLink.getAttribute("href") || "";
+            const questionId = new URL(href, window.location.origin).searchParams.get("question_id") || "";
+            persistQuestionNavigationState(questionId);
+            window.location.href = href;
+          });
+        });
+
         document.querySelectorAll("[data-learning-answer-form]").forEach(function (form) {
           form.addEventListener("submit", function () {
             saveDraftNow();
@@ -5123,7 +5699,13 @@ def render_info_sections(initialized: bool) -> str:
     """
 
 
-def render_body(status: Optional[dict], initialized: bool, selected_question_id: Optional[str] = None) -> str:
+def render_body(
+    status: Optional[dict],
+    initialized: bool,
+    selected_question_id: Optional[str] = None,
+    question_message: Optional[str] = None,
+    question_error: Optional[str] = None,
+) -> str:
     if not initialized or not status:
         return f"""
         <section class="implementation-shell-v3">
@@ -5186,7 +5768,13 @@ def render_body(status: Optional[dict], initialized: bool, selected_question_id:
     current_step = current_workflow_step(status)
     orientation_html = render_week_orientation_banner(learning_session.get("reading_material"))
     assessment = (
-        render_learning_assessment_v3(status, learning_session, selected_question_id)
+        render_learning_assessment_v3(
+            status,
+            learning_session,
+            selected_question_id,
+            question_message=question_message,
+            question_error=question_error,
+        )
         if current_step == "learn"
         else render_generic_assessment_v3(status, current_step)
     )
@@ -5236,7 +5824,13 @@ def render_stepper_bar_v3(status: Optional[dict], current_step: str, initialized
     return f"<section class='stepper-bar-v3'>{''.join(items)}</section>"
 
 
-def render_learning_assessment_v3(status: dict, learning_session: dict, selected_question_id: Optional[str]) -> str:
+def render_learning_assessment_v3(
+    status: dict,
+    learning_session: dict,
+    selected_question_id: Optional[str],
+    question_message: Optional[str] = None,
+    question_error: Optional[str] = None,
+) -> str:
     progress = status.get("question_progress", {})
     questions = learning_session.get("questions", [])
     attempts = latest_attempts(learning_session)
@@ -5247,7 +5841,14 @@ def render_learning_assessment_v3(status: dict, learning_session: dict, selected
         cards_html = "<p class='muted'>No concept cards generated yet.</p>"
     reading_html = render_reading_material(reading_material)
     workspace_html = (
-        render_learning_workspace(selected_question, questions, attempts, progress)
+        render_learning_workspace(
+            selected_question,
+            questions,
+            attempts,
+            progress,
+            question_message=question_message,
+            question_error=question_error,
+        )
         if selected_question
         else render_learning_workspace_empty_v3(progress)
     )
@@ -6489,6 +7090,8 @@ def render_learning_workspace(
     questions: list[dict],
     attempts: dict[str, dict],
     progress: dict,
+    question_message: Optional[str] = None,
+    question_error: Optional[str] = None,
 ) -> str:
     question_index = next((index for index, question in enumerate(questions) if question["id"] == selected_question["id"]), 0)
     previous_question = questions[question_index - 1] if question_index > 0 else None
@@ -6500,6 +7103,9 @@ def render_learning_workspace(
     status = question_attempt_status(attempts, selected_question["id"])
     latest_attempt = attempts.get(selected_question["id"], {})
     previous_answer = latest_attempt.get("answer", "")
+    feedback_html = render_question_feedback_notice(question_message, question_error)
+    validator_feedback_html = render_question_validator_feedback(latest_attempt.get("result"), status)
+    jump_control_html = render_question_jump_control(question_index + 1, len(questions))
     return f"""
     <article class="subpanel question-column" id="question-workspace">
       <div class="step-title-row">
@@ -6515,6 +7121,7 @@ def render_learning_workspace(
         {render_question_step_link(previous_question, "Previous Question", "previous")}
         {render_question_step_link(next_question, "Next Question", "next")}
         <button type="button" class="button-link secondary" data-question-modal-open>See Full Question List</button>
+        {jump_control_html}
       </div>
       <div class="progress-block" aria-label="Question progress">
         <div class="progress-meta">
@@ -6529,6 +7136,8 @@ def render_learning_workspace(
         <summary>What A Good Answer Should Cover</summary>
         <ul class="summary-list tight" style="margin-top: 14px;">{rubric}</ul>
       </details>
+      {feedback_html}
+      {validator_feedback_html}
       <form method="post" action="/action" class="form-grid" data-learning-answer-form>
         <input type="hidden" name="action" value="learning_answer">
         <input type="hidden" name="question_id" value="{escape(selected_question['id'])}">
@@ -6540,6 +7149,48 @@ def render_learning_workspace(
       </form>
     </article>
     """
+
+
+def render_question_feedback_notice(message: Optional[str], error: Optional[str]) -> str:
+    if message:
+        return f"<div class='notice success'>{escape(message)}</div>"
+    if error:
+        return f"<div class='notice error'>{escape(error)}</div>"
+    return ""
+
+
+def render_question_jump_control(current_number: int, total_questions: int) -> str:
+    return (
+        "<form class='question-jump-form' data-question-jump-form>"
+        "<label for='question-jump-input'>Jump to question</label>"
+        f"<input id='question-jump-input' type='number' min='1' max='{total_questions}' value='{current_number}' "
+        "inputmode='numeric' data-question-jump-input aria-label='Jump to question number'>"
+        "<button type='submit' class='button-link secondary'>Go</button>"
+        "</form>"
+    )
+
+
+def render_question_validator_feedback(result: Any, status: str) -> str:
+    if status != "failed" or not result:
+        return ""
+
+    if isinstance(result, dict):
+        rationale = str(result.get("score_rationale") or "").strip()
+        missing_concepts = [str(item).strip() for item in result.get("missing_concepts", []) if str(item).strip()]
+    else:
+        rationale = str(getattr(result, "score_rationale", "") or "").strip()
+        missing_concepts = [str(item).strip() for item in getattr(result, "missing_concepts", []) if str(item).strip()]
+
+    parts = ["<div class='question-validator-feedback failed'>", "<h4>What was missing</h4>"]
+    if rationale:
+        parts.append(f"<p>{escape(rationale)}</p>")
+    if missing_concepts:
+        parts.append("<p><strong>Missing concepts:</strong></p>")
+        parts.append("<ul>")
+        parts.extend(f"<li>{escape(item)}</li>" for item in missing_concepts)
+        parts.append("</ul>")
+    parts.append("</div>")
+    return "".join(parts)
 
 
 def render_question_step_link(question: Optional[dict], label: str, direction: str) -> str:
@@ -6570,7 +7221,7 @@ def render_question_list_modal(
         current_class = " current" if question["id"] == selected_question_id else ""
         items.append(
             "<li class='question-modal-item'>"
-            f"<a class='question-modal-link{current_class}' href='/?question_id={quote_plus(question['id'])}' data-question-step-link data-question-modal-link>"
+            f"<a class='question-modal-link{current_class}' href='/?question_id={quote_plus(question['id'])}' data-question-step-link data-question-modal-link data-question-order='{index}'>"
             "<div class='question-modal-meta'>"
             f"<span class='question-modal-index'>Question {index}</span>"
             f"{render_question_status_badge(question['id'], question_attempt_status(attempts, question['id']))}"

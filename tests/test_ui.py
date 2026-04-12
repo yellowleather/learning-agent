@@ -413,8 +413,25 @@ def test_render_page_shows_uninitialized_state(monkeypatch, tmp_path):
     assert "data-topic-chat-root" in page
     assert "data-topic-chat-session-list" in page
     assert "data-topic-chat-suggestion" in page
+    assert "data-theme-toggle" in page
+    assert "learning-agent-theme-preference" in page
     assert "How It Works" not in page
     assert "What You Will See" not in page
+
+
+def test_render_page_includes_dark_mode_bootstrap(monkeypatch, tmp_path):
+    write_config(tmp_path)
+    write_roadmap(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    page = render_page()
+
+    assert 'html[data-theme="dark"] {' in page
+    assert 'document.documentElement' in page
+    assert 'window.matchMedia("(prefers-color-scheme: dark)")' in page
+    assert 'window.localStorage.setItem(storageKey, theme);' in page
+    assert 'data-theme-toggle-label' in page
+    assert "Switch to dark mode" in page
 
 
 def test_render_page_uses_curriculum_length_before_initialization(monkeypatch, tmp_path):
@@ -541,15 +558,24 @@ def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
     assert "/?question_id=prefill_decode_baseline" in page
     assert "data-question-step-link" in page
     assert "data-question-modal-link" in page
+    assert "data-question-order='1'" in page
     assert "data-question-status-badge" in page
     assert "data-base-status='not_started'" in page
     assert 'draft: "Draft"' in page
     assert "data-question-modal-open" in page
     assert "data-question-modal-close" in page
+    assert "data-question-jump-form" in page
+    assert "data-question-jump-input" in page
+    assert "Jump to question" in page
+    assert 'type=\'number\'' in page
+    assert "Question 1 of 50" in page
+    assert "Go</button>" in page
     assert "data-learning-answer-form" in page
     assert "data-learning-answer-textarea" in page
     assert "data-draft-status" in page
     assert "learning-agent-draft-week-" in page
+    assert 'document.querySelectorAll("[data-question-jump-form]")' in page
+    assert "Number.isInteger(targetNumber)" in page
     assert "Concept Cards" in page
     assert "Reading Material" in page
 
@@ -627,6 +653,31 @@ def test_marathon_strip_advances_when_a_required_question_passes(monkeypatch, tm
     ) in after
 
 
+def test_learning_answer_feedback_renders_inside_question_workspace(monkeypatch, tmp_path):
+    write_config(tmp_path)
+    write_roadmap(tmp_path)
+    (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: FakeProvider())
+
+    assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
+
+    page = render_page(
+        selected_question_id="prefill_decode_baseline",
+        question_message="Question passed.",
+    )
+
+    rubric_index = page.index('<details class="rubric-inline">')
+    feedback_index = page.index("<div class='notice success'>Question passed.</div>")
+    form_index = page.index('<form method="post" action="/action" class="form-grid" data-learning-answer-form>')
+
+    assert page.count("<div class='notice success'>Question passed.</div>") == 1
+    assert rubric_index < feedback_index < form_index
+    assert "url.searchParams.delete(\"question_message\");" in page
+    assert 'const currentMessage = "Question passed.";' in page
+
+
 def test_failed_answer_is_reloaded_into_textarea(monkeypatch, tmp_path):
     write_config(tmp_path)
     write_roadmap(tmp_path)
@@ -650,7 +701,15 @@ def test_failed_answer_is_reloaded_into_textarea(monkeypatch, tmp_path):
 
     assert result == "Question failed."
 
-    after = render_page(selected_question_id="prefill_decode_baseline")
+    after = render_page(
+        selected_question_id="prefill_decode_baseline",
+        question_error="Question failed.",
+    )
+    assert "<div class='notice error'>Question failed.</div>" in after
+    assert "<h4>What was missing</h4>" in after
+    assert "Missing a key idea." in after
+    assert "<strong>Missing concepts:</strong>" in after
+    assert "<li>iterative decoding</li>" in after
     assert (
         '<textarea name="learning_answer" placeholder="Answer this question while using the material on the left as reference." '
         f'data-learning-answer-textarea>{submitted}</textarea>'
