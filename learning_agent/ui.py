@@ -58,12 +58,14 @@ def build_handler():
             question_message = first_param(params, "question_message")
             question_error = first_param(params, "question_error")
             selected_question_id = first_param(params, "question_id")
+            view_step = first_param(params, "view_step")
             page = render_page(
                 message=message,
                 error=error,
                 question_message=question_message,
                 question_error=question_error,
                 selected_question_id=selected_question_id,
+                view_step=view_step,
             )
             self._send_html(page)
 
@@ -361,6 +363,7 @@ def render_page(
     question_message: Optional[str] = None,
     question_error: Optional[str] = None,
     selected_question_id: Optional[str] = None,
+    view_step: Optional[str] = None,
 ) -> str:
     course_total_weeks = resolve_course_total_weeks()
     try:
@@ -2666,6 +2669,16 @@ def render_page(
       padding: 8px 12px;
       min-width: 0;
       flex: 1 1 0;
+      text-decoration: none;
+      color: inherit;
+    }}
+    a.stepper-item-v3.clickable {{
+      cursor: pointer;
+      border-radius: 8px;
+      transition: background 0.15s;
+    }}
+    a.stepper-item-v3.clickable:hover {{
+      background: var(--surface-alt);
     }}
     .stepper-separator-v3 {{
       width: 28px;
@@ -3364,6 +3377,8 @@ def render_page(
     html[data-theme="dark"] .topic-chat-thread-shell,
     html[data-theme="dark"] .topic-chat-message,
     html[data-theme="dark"] .topic-chat-context-chip,
+    html[data-theme="dark"] .question-modal,
+    html[data-theme="dark"] .question-modal-link,
     html[data-theme="dark"] .question-validator-feedback,
     html[data-theme="dark"] pre {{
       background: var(--surface-strong);
@@ -3429,6 +3444,31 @@ def render_page(
     }}
     html[data-theme="dark"] .notice.error {{
       background: var(--danger-soft);
+    }}
+    html[data-theme="dark"] .question-modal {{
+      border-color: rgba(84, 114, 154, 0.72);
+      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55);
+    }}
+    html[data-theme="dark"] .question-modal::backdrop {{
+      background: rgba(4, 8, 14, 0.7);
+    }}
+    html[data-theme="dark"] .question-modal-link {{
+      background: rgba(21, 29, 42, 0.96);
+    }}
+    html[data-theme="dark"] .question-modal-link.current {{
+      background: linear-gradient(180deg, rgba(34, 54, 83, 0.98), rgba(24, 39, 61, 0.98));
+      border-color: rgba(98, 140, 201, 0.76);
+    }}
+    html[data-theme="dark"] .question-modal-close {{
+      background: rgba(21, 29, 42, 0.96);
+      border-color: var(--border);
+      color: var(--text);
+    }}
+    html[data-theme="dark"] .question-modal-index {{
+      color: var(--accent-dark);
+    }}
+    html[data-theme="dark"] .required-question-marker {{
+      color: #ff8f87;
     }}
     html[data-theme="dark"] .question-validator-feedback.failed {{
       background: rgba(104, 30, 47, 0.32);
@@ -3755,6 +3795,7 @@ def render_page(
             selected_question_id=selected_question_id,
             question_message=question_message,
             question_error=question_error,
+            view_step=view_step,
         )}
       </div>
       <div class="panel-resizer-v3" data-panel-resizer="right" aria-hidden="true"></div>
@@ -5705,6 +5746,7 @@ def render_body(
     selected_question_id: Optional[str] = None,
     question_message: Optional[str] = None,
     question_error: Optional[str] = None,
+    view_step: Optional[str] = None,
 ) -> str:
     if not initialized or not status:
         return f"""
@@ -5765,7 +5807,13 @@ def render_body(
         """
 
     learning_session = status.get("learning_session") or {}
-    current_step = current_workflow_step(status)
+    actual_step = current_workflow_step(status)
+    valid_step_ids = {s["id"] for s in workflow_steps(status)}
+    current_step = (
+        view_step
+        if view_step and view_step in valid_step_ids and view_step != actual_step
+        else actual_step
+    )
     orientation_html = render_week_orientation_banner(learning_session.get("reading_material"))
     assessment = (
         render_learning_assessment_v3(
@@ -5782,14 +5830,14 @@ def render_body(
     return f"""
     <section class="implementation-shell-v3">
       {orientation_html}
-      {render_stepper_bar_v3(status, current_step, initialized=True)}
+      {render_stepper_bar_v3(status, current_step, initialized=True, actual_step=actual_step)}
       {assessment}
       {supporting_section}
     </section>
     """
 
 
-def render_stepper_bar_v3(status: Optional[dict], current_step: str, initialized: bool) -> str:
+def render_stepper_bar_v3(status: Optional[dict], current_step: str, initialized: bool, actual_step: Optional[str] = None) -> str:
     step_descriptions = {
         "learn": "Concept Mastery",
         "build": "Create Deliverables",
@@ -5809,16 +5857,32 @@ def render_stepper_bar_v3(status: Optional[dict], current_step: str, initialized
     items = []
     for index, step in enumerate(steps, start=1):
         step_id = step["id"]
-        current_class = " current" if step_id == current_step else ""
-        items.append(
-            f"<div class='stepper-item-v3{current_class}'>"
+        is_current = step_id == current_step
+        is_passed = step["status"] == "passed"
+        is_actual = step_id == actual_step
+        # Clickable if: passed (review) OR is the real active step when viewing an override
+        can_click = (is_passed or (is_actual and not is_current)) and not is_current
+        current_class = " current" if is_current else ""
+        clickable_class = " clickable" if can_click else ""
+        inner = (
             f"<span class='stepper-number-v3'>{index}</span>"
             "<div class='stepper-copy-v3'>"
             f"<span class='stepper-label-v3'>{escape(step['label'])}</span>"
             f"<span class='stepper-subcopy-v3'>{escape(step_descriptions.get(step_id, ''))}</span>"
             "</div>"
-            "</div>"
         )
+        if can_click:
+            items.append(
+                f"<a href='{'/' if is_actual else f'/?view_step={step_id}'}' class='stepper-item-v3{current_class}{clickable_class}'>"
+                f"{inner}"
+                "</a>"
+            )
+        else:
+            items.append(
+                f"<div class='stepper-item-v3{current_class}'>"
+                f"{inner}"
+                "</div>"
+            )
         if index < len(steps):
             items.append("<span class='stepper-separator-v3' aria-hidden='true'>→</span>")
     return f"<section class='stepper-bar-v3'>{''.join(items)}</section>"

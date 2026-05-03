@@ -432,6 +432,9 @@ def test_render_page_includes_dark_mode_bootstrap(monkeypatch, tmp_path):
     assert 'window.localStorage.setItem(storageKey, theme);' in page
     assert 'data-theme-toggle-label' in page
     assert "Switch to dark mode" in page
+    assert 'html[data-theme="dark"] .question-modal {' in page
+    assert 'html[data-theme="dark"] .question-modal-link {' in page
+    assert 'html[data-theme="dark"] .question-modal-link.current {' in page
 
 
 def test_render_page_uses_curriculum_length_before_initialization(monkeypatch, tmp_path):

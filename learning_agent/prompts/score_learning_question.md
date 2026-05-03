@@ -11,6 +11,15 @@ stated.
 - An answer passes if it demonstrates understanding of all 
   required rubric points. Exact terminology is not required 
   but the underlying mechanism must be correct.
+- Treat semantically equivalent paraphrases as satisfying a 
+  rubric point when the meaning is clearly the same.
+- A single concise statement may satisfy multiple rubric 
+  points if it clearly covers them. Do not require the learner 
+  to restate the same idea in separate wording just because 
+  the rubric split it into multiple bullets.
+- Do not fail an answer solely for minor spelling mistakes, 
+  grammar issues, or typos when the intended concept is still 
+  clear from context.
 - An answer fails if it is missing one or more required 
   rubric points, is factually incorrect on a required point, 
   or demonstrates a fundamental misconception.

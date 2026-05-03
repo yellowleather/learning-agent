@@ -8,7 +8,9 @@ from learning_agent.models import (
     ConceptCardPayload,
     LearningQuestion,
     LearningQuestionBankPayload,
+    ObservationRecord,
     ProgressState,
+    QuestionScore,
     ReadingMaterialPayload,
     TopicChatTurn,
 )
@@ -242,6 +244,80 @@ def test_generate_concept_cards_from_reading_uses_reading_material_contract(monk
     assert "generate cards directly from the question bank" in prompt
     assert '"id": "prefill-vs-decode"' in prompt
     assert captured["response_model"] is ConceptCardPayload
+
+
+def test_score_learning_question_prompt_allows_minor_typos(monkeypatch):
+    provider = OpenAIProvider(model="test-model")
+    captured = {}
+
+    def fake_completion(system_prompt, user_prompt, response_model):
+        captured["system_prompt"] = system_prompt
+        captured["user_prompt"] = user_prompt
+        captured["response_model"] = response_model
+        return QuestionScore(passed=True, score_rationale="Clear enough.", missing_concepts=[])
+
+    monkeypatch.setattr(provider, "_completion_as_model", fake_completion)
+
+    result = provider.score_learning_question(
+        week_spec=_week_spec(),
+        question=LearningQuestion(
+            id="q1",
+            depth="baseline",
+            prompt_text="Explain prefill vs decode.",
+            scoring_rubric=["Mention prompt processing.", "Mention iterative decoding."],
+        ),
+        answer="Prefil proceses the prompt and decode generates tokens one by one.",
+        observation=ObservationRecord(command="python benchmark.py", artifact_path="docs/baseline_results.md"),
+    )
+
+    assert result.passed is True
+    prompt = captured["user_prompt"]
+    assert "Exact terminology is not required" in prompt
+    assert "Do not fail an answer solely for minor spelling mistakes" in prompt
+    assert "Prefil proceses the prompt" in prompt
+    assert captured["response_model"] is QuestionScore
+
+
+def test_score_learning_question_prompt_accepts_concise_semantic_paraphrases(monkeypatch):
+    provider = OpenAIProvider(model="test-model")
+    captured = {}
+
+    def fake_completion(system_prompt, user_prompt, response_model):
+        captured["system_prompt"] = system_prompt
+        captured["user_prompt"] = user_prompt
+        captured["response_model"] = response_model
+        return QuestionScore(passed=True, score_rationale="Concise but complete.", missing_concepts=[])
+
+    monkeypatch.setattr(provider, "_completion_as_model", fake_completion)
+
+    result = provider.score_learning_question(
+        week_spec=_week_spec(),
+        question=LearningQuestion(
+            id="q1",
+            depth="baseline",
+            prompt_text="What is arithmetic intensity in the context of GPU computation?",
+            scoring_rubric=[
+                "Ratio of compute operations to memory operations.",
+                "FLOPs per byte of memory accessed.",
+                "Higher arithmetic intensity means more compute per memory access.",
+                "Determines whether operation is compute or memory bound.",
+            ],
+        ),
+        answer=(
+            "Arithmetic intensity is the ratio of FLOPs per byte of memory accessed. "
+            "A higher number means the operation is compute bound, otherwise memory bound."
+        ),
+        observation=None,
+    )
+
+    assert result.passed is True
+    prompt = captured["user_prompt"]
+    assert "Treat semantically equivalent paraphrases as satisfying a" in prompt
+    assert "A single concise statement may satisfy multiple rubric" in prompt
+    assert "Do not require the learner" in prompt
+    assert "restate the same idea" in prompt
+    assert "compute bound, otherwise memory bound" in prompt
+    assert captured["response_model"] is QuestionScore
 
 
 def test_stream_topic_chat_uses_streaming_and_yields_deltas(monkeypatch):
