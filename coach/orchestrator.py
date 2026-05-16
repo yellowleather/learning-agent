@@ -106,8 +106,9 @@ class WeekOrchestrator:
         ledger = self.state.load_ledger()
         if not ledger.state.gates.week_approved:
             raise CoachError("Approve the current week before advancing.")
+        outgoing_week = ledger.state.current_week
         metadata = self.curriculum.metadata()
-        next_week = self.curriculum.week_by_number(ledger.state.current_week + 1)
+        next_week = self.curriculum.week_by_number(outgoing_week + 1)
         ledger = Ledger(
             curriculum_metadata=metadata,
             state={
@@ -123,8 +124,11 @@ class WeekOrchestrator:
                 },
             },
         )
+        # Archive the outgoing week's ephemeral files (learning, task, build,
+        # transcript) into state/archive/week_N/ before bumping the ledger,
+        # so each week's run record stays available for later debugging.
+        self.state.archive_week_state(outgoing_week)
         self.state.save_ledger(ledger)
-        self.state.clear_ephemeral_state()
         return ledger
 
     def answer_topic_chat(

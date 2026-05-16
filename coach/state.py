@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional, Type, TypeVar
+from typing import Iterator, Optional, Type, TypeVar
 
 from pydantic import BaseModel
 
 from coach.errors import CoachError
 from coach.models import (
     AppConfig,
+    BuildSession,
     GeneratedTask,
     Ledger,
     LearningSession,
     TaskSession,
+    TranscriptEvent,
     VerificationRecord,
 )
 
@@ -37,6 +39,18 @@ class StateStore:
     @property
     def learning_path(self) -> Path:
         return self.state_dir / "current_learning.json"
+
+    @property
+    def build_session_path(self) -> Path:
+        return self.state_dir / "current_build.json"
+
+    @property
+    def build_transcript_path(self) -> Path:
+        return self.state_dir / "current_build.transcript.jsonl"
+
+    @property
+    def archive_dir(self) -> Path:
+        return self.state_dir / "archive"
 
     def ensure_state_dir(self) -> None:
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -89,10 +103,74 @@ class StateStore:
         task_session.verification = record
         self.save_task(task_session)
 
+    def load_build_session(self) -> BuildSession:
+        return self._load_model(self.build_session_path, BuildSession)
+
+    def save_build_session(self, session: BuildSession) -> None:
+        self.ensure_state_dir()
+        self._write_json(self.build_session_path, session.model_dump(mode="json"))
+
+    def append_transcript_event(self, event: TranscriptEvent) -> None:
+        """Append one event to the build transcript JSONL file.
+
+        Single-writer (the agent loop). Each event is one line of JSON;
+        appending avoids rewriting a growing file every iteration."""
+        self.ensure_state_dir()
+        line = json.dumps(event.model_dump(mode="json"), sort_keys=True)
+        with self.build_transcript_path.open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+
+    def iter_transcript_events(self) -> Iterator[TranscriptEvent]:
+        """Replay the persisted transcript event by event.
+
+        Used by debugging tools / archive readers; the live agent loop does
+        not read its own transcript back."""
+        if not self.build_transcript_path.exists():
+            return
+        with self.build_transcript_path.open("r", encoding="utf-8") as fh:
+            for raw in fh:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    payload = json.loads(raw)
+                except json.JSONDecodeError as exc:
+                    raise CoachError(
+                        f"Transcript line is not valid JSON in {self.build_transcript_path}: {exc}"
+                    ) from exc
+                yield TranscriptEvent.model_validate(payload)
+
+    @property
+    def _ephemeral_paths(self) -> tuple[Path, ...]:
+        """The set of files cleared on reset and moved on archive."""
+        return (
+            self.task_path,
+            self.learning_path,
+            self.build_session_path,
+            self.build_transcript_path,
+        )
+
     def clear_ephemeral_state(self) -> None:
-        for path in (self.task_path, self.learning_path):
+        """Delete the current week's ephemeral working files outright.
+
+        Used when re-running the same week from scratch (LearnStage.reset_pipeline)
+        and on initialize_ledger. For week advancement, use archive_week_state."""
+        for path in self._ephemeral_paths:
             if path.exists():
                 path.unlink()
+
+    def archive_week_state(self, week_number: int) -> Path:
+        """Move the outgoing week's ephemeral files into state/archive/week_N/.
+
+        Used by advance_week so build sessions, transcripts, learning sessions,
+        and task sessions remain available for later debugging and review.
+        Returns the archive directory path for the week."""
+        target = self.archive_dir / f"week_{int(week_number)}"
+        target.mkdir(parents=True, exist_ok=True)
+        for path in self._ephemeral_paths:
+            if path.exists():
+                path.rename(target / path.name)
+        return target
 
     def _load_model(self, path: Path, model: Type[ModelT]) -> ModelT:
         try:
