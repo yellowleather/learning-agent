@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from typer.testing import CliRunner
 
 from coach.cli import app
-from coach.models import (
+from learn.models import (
     ConceptCardPayload,
     LearningQuestionBankPayload,
     QuestionScore,

@@ -18,7 +18,7 @@ from curriculum.bootstrap import (
     bootstrap_curriculum_workspace,
 )
 from coach.errors import CoachError
-from coach.models import ObservationRecord, ReflectionRecord
+from verify.models import ObservationRecord, ReflectionRecord
 from coach.providers.anthropic_provider import AnthropicProvider
 from coach.providers.openai_provider import OpenAIProvider
 from coach.ui import DEFAULT_UI_HOST, DEFAULT_UI_PORT, serve_ui

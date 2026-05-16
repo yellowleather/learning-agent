@@ -5,14 +5,18 @@ import openai
 
 from coach.errors import CoachError
 from coach.models import (
+    ProgressState,
+    TopicChatTurn,
+)
+from verify.models import (
+    ObservationRecord,
+)
+from learn.models import (
     ConceptCardPayload,
     LearningQuestion,
     LearningQuestionBankPayload,
-    ObservationRecord,
-    ProgressState,
     QuestionScore,
     ReadingMaterialPayload,
-    TopicChatTurn,
 )
 from coach.providers.openai_provider import OpenAIProvider
 

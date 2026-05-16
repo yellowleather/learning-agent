@@ -6,16 +6,19 @@ from typing import Iterator, Optional, Type, TypeVar
 
 from pydantic import BaseModel
 
+from build.models import BuildSession, TranscriptEvent
 from coach.errors import CoachError
 from coach.models import (
     AppConfig,
-    BuildSession,
     GeneratedTask,
     Ledger,
-    LearningSession,
     TaskSession,
-    TranscriptEvent,
+)
+from verify.models import (
     VerificationRecord,
+)
+from learn.models import (
+    LearningSession,
 )
 
 

@@ -5,15 +5,19 @@ from collections.abc import Iterator
 from typing import Any
 
 from coach.models import (
-    ConceptCardPayload,
     GeneratedTask,
+    ProgressState,
+    TopicChatTurn,
+)
+from verify.models import (
+    ObservationRecord,
+)
+from learn.models import (
+    ConceptCardPayload,
     LearningQuestion,
     LearningQuestionBankPayload,
-    ObservationRecord,
-    ProgressState,
     QuestionScore,
     ReadingMaterialPayload,
-    TopicChatTurn,
 )
 
 

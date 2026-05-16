@@ -13,14 +13,14 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from coach.config import AppConfig
-from coach.models import (
+from build.models import (
     BuildReport,
     BuildSession,
     CommandRun,
     FileTouched,
     TranscriptEvent,
 )
+from coach.config import AppConfig
 from coach.state import StateStore
 
 

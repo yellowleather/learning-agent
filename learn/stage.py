@@ -21,9 +21,11 @@ from curriculum.access import CurriculumAccess
 from coach.errors import CoachError
 from coach.models import (
     CheckpointState,
+    Ledger,
+)
+from learn.models import (
     ConceptCard,
     ConceptCardPayload,
-    Ledger,
     LearningBundle,
     LearningQuestion,
     LearningQuestionBankPayload,

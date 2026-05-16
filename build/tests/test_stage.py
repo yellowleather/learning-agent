@@ -20,9 +20,11 @@ from coach.models import (
     Ledger,
     MetricsState,
     ProgressState,
+)
+from verify.models import (
     VerificationRecord,
 )
-from coach.stages.build import BuildStage
+from build.stage import BuildStage
 from coach.state import StateStore
 
 

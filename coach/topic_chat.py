@@ -18,7 +18,8 @@ from collections.abc import Iterator
 from typing import Any, Callable
 
 from coach.errors import CoachError
-from coach.models import Ledger, LearningSession, TopicChatTurn
+from coach.models import Ledger, TopicChatTurn
+from learn.models import LearningSession
 from coach.providers.base import LLMProvider
 
 

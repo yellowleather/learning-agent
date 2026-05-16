@@ -26,19 +26,25 @@ coach = "coach.cli:app"
 packages = [
   "coach",
   "coach.providers",
-  "coach.stages",
   "curriculum",
+  "build",
+  "learn",
+  "verify",
 ]
 
 [tool.setuptools.package-data]
 coach = ["prompts/*.md", "assets/*.png", "assets/illustrations/*.svg"]
 curriculum = ["prompts/*.md"]
+build = ["prompts/*.md"]
+learn = ["prompts/*.md"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = [
   "coach/tests",
-  "coach/stages/tests",
   "coach/providers/tests",
   "curriculum/tests",
+  "build/tests",
+  "learn/tests",
+  "verify/tests",
 ]

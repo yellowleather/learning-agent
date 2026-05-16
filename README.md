@@ -2,7 +2,7 @@
 
 `coach` is a curriculum-paced learning workspace for senior engineers. It runs a structured Learn → Build → Verify → Approve loop against a separate target repository, exposing only the currently unlocked week and blocking progression until each week's gates are satisfied.
 
-The platform is structured as a stage-driven workflow rather than a multi-agent system. There is one orchestrator and three stage controllers (Learn, Build, Verify), plus a topic-chat service for ad-hoc questions and a separate `curriculum` package that owns curriculum reads and bootstrapping.
+The platform is structured as a stage-driven workflow rather than a multi-agent system. Each step is its own top-level package: `learn/`, `build/`, `verify/`. The `coach/` package holds only the cross-stage scaffolding — orchestrator, ledger, state, topic chat, providers, CLI, and UI. Curriculum reads and bootstrapping live in their own `curriculum/` package.
 
 ## What It Does
 
@@ -18,20 +18,36 @@ The platform is structured as a stage-driven workflow rather than a multi-agent 
 
 ```text
 .
-├── coach/                     # Runtime: orchestrator, stages, providers, CLI, UI
-│   ├── stages/                # Learn / Build / Verify stage controllers
-│   ├── providers/             # LLM provider abstraction + concrete adapters
-│   ├── prompts/               # System prompts used by provider calls
-│   ├── assets/                # UI assets
-│   ├── tests/                 # Orchestrator / CLI / UI / topic-chat tests
+├── coach/                     # Cross-stage scaffolding only
 │   ├── orchestrator.py        # WeekOrchestrator (status, gates, week transitions)
 │   ├── topic_chat.py          # Standalone chat service
+│   ├── providers/             # LLM provider abstraction + concrete adapters
+│   ├── prompts/               # Cross-stage prompts (mentor.md, junior.md, topic_chat.md)
 │   ├── cli.py                 # Typer CLI
 │   ├── ui.py                  # Local web UI
-│   ├── models.py              # Pydantic models (ledger, sessions, payloads)
+│   ├── models.py              # Cross-stage models (Ledger, Gates, TaskSession, …)
+│   ├── _base.py               # Shared StrictModel base class
 │   ├── state.py               # Persistent + ephemeral state storage
 │   ├── config.py              # Config + repo-root discovery
-│   └── errors.py              # CoachError
+│   ├── errors.py              # CoachError
+│   ├── assets/                # UI assets
+│   └── tests/                 # Orchestrator / CLI / UI / topic-chat / config tests
+├── learn/                     # Learn step
+│   ├── stage.py               # LearnStage
+│   ├── models.py              # ConceptCard, LearningQuestion, LearningSession, …
+│   ├── prompts.py             # Prompt loader for learn/prompts/
+│   ├── prompts/               # Question bank, reading, concept cards, scoring
+│   └── tests/
+├── build/                     # Build step
+│   ├── stage.py               # BuildStage
+│   ├── models.py              # BuildReport, BuildSession, CommandRun, …
+│   ├── prompts.py             # Prompt loader for build/prompts/
+│   ├── prompts/               # generate_task.md (future: build_agent_system.md)
+│   └── tests/
+├── verify/                    # Verify step
+│   ├── stage.py               # VerifyStage
+│   ├── models.py              # VerificationRecord, ObservationRecord, ReflectionRecord
+│   └── tests/
 ├── curriculum/                # Curriculum reads, parsing, bootstrapping
 │   ├── access.py              # CurriculumAccess (cached roadmap reader)
 │   ├── parser.py              # Roadmap markdown → dict
@@ -43,7 +59,7 @@ The platform is structured as a stage-driven workflow rather than a multi-agent 
 └── pyproject.toml
 ```
 
-Tests live next to the code they cover (`coach/tests/`, `coach/stages/tests/`, `coach/providers/tests/`, `curriculum/tests/`).
+Tests live next to the code they cover (`coach/tests/`, `coach/providers/tests/`, `learn/tests/`, `build/tests/`, `verify/tests/`, `curriculum/tests/`).
 
 ## Requirements
 

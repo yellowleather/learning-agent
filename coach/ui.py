@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, quote_plus, urlparse
 from coach.config import load_config
 from coach.orchestrator import WeekOrchestrator
 from coach.errors import CoachError
-from coach.models import ObservationRecord, ReflectionRecord
+from verify.models import ObservationRecord, ReflectionRecord
 
 
 DEFAULT_UI_HOST = "127.0.0.1"

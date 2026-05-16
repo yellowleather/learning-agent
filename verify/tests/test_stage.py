@@ -17,11 +17,13 @@ from coach.models import (
     Gates,
     Ledger,
     MetricsState,
-    ObservationRecord,
     ProgressState,
+)
+from verify.models import (
+    ObservationRecord,
     ReflectionRecord,
 )
-from coach.stages.verify import VerifyStage
+from verify.stage import VerifyStage
 from coach.state import StateStore
 
 

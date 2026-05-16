@@ -9,18 +9,24 @@ from pydantic import BaseModel
 
 from coach.errors import CoachError
 from coach.models import (
-    ConceptCardPayload,
     GeneratedTask,
-    LearningQuestion,
-    LearningQuestionBankPayload,
-    ObservationRecord,
     ProgressState,
-    QuestionScore,
-    ReadingMaterialPayload,
     TopicChatTurn,
 )
+from verify.models import (
+    ObservationRecord,
+)
+from learn.models import (
+    ConceptCardPayload,
+    LearningQuestion,
+    LearningQuestionBankPayload,
+    QuestionScore,
+    ReadingMaterialPayload,
+)
+from build.prompts import render_prompt as build_render_prompt
 from coach.prompts import load_prompt, render_prompt
 from coach.providers.base import LLMProvider
+from learn.prompts import render_prompt as learn_render_prompt
 
 
 ResponseModelT = TypeVar("ResponseModelT", bound=BaseModel)
@@ -32,7 +38,7 @@ class OpenAIProvider(LLMProvider):
 
     def generate_prior_knowledge_summary(self, full_plan: str, target_week_number: int) -> str:
         system_prompt = load_prompt("mentor.md")
-        user_prompt = render_prompt(
+        user_prompt = learn_render_prompt(
             "prior_knowledge_summary.md",
             {
                 "FULL_PLAN": full_plan,
@@ -48,7 +54,7 @@ class OpenAIProvider(LLMProvider):
         ledger_state: ProgressState,
     ) -> LearningQuestionBankPayload:
         system_prompt = load_prompt("mentor.md")
-        base_user_prompt = render_prompt(
+        base_user_prompt = learn_render_prompt(
             "question_bank.md",
             {
                 "PRIOR_KNOWLEDGE_SUMMARY": prior_knowledge_summary,
@@ -66,7 +72,7 @@ class OpenAIProvider(LLMProvider):
         questions: list[LearningQuestion],
     ) -> ReadingMaterialPayload:
         system_prompt = load_prompt("mentor.md")
-        user_prompt = render_prompt(
+        user_prompt = learn_render_prompt(
             "reading_material.md",
             {
                 "PRIOR_KNOWLEDGE_SUMMARY": prior_knowledge_summary,
@@ -84,7 +90,7 @@ class OpenAIProvider(LLMProvider):
         reading_material: ReadingMaterialPayload,
     ) -> ConceptCardPayload:
         system_prompt = load_prompt("mentor.md")
-        user_prompt = render_prompt(
+        user_prompt = learn_render_prompt(
             "concept_cards_from_reading.md",
             {
                 "WEEK_PLAN": self._week_plan_text(week_spec),
@@ -95,8 +101,10 @@ class OpenAIProvider(LLMProvider):
         return self._completion_as_model(system_prompt, user_prompt, ConceptCardPayload)
 
     def generate_task(self, week_spec: dict[str, Any], ledger_state: ProgressState) -> GeneratedTask:
+        # generate_task.md lives in build/ since it shapes a build-domain artefact;
+        # the junior.md system prompt is still the runtime persona, loaded from coach/.
         system_prompt = load_prompt("junior.md")
-        user_prompt = render_prompt(
+        user_prompt = build_render_prompt(
             "generate_task.md",
             {
                 "WEEK_PLAN": self._week_plan_text(week_spec),
@@ -114,7 +122,7 @@ class OpenAIProvider(LLMProvider):
     ) -> QuestionScore:
         system_prompt = load_prompt("mentor.md")
         observation_json = observation.model_dump_json(indent=2) if observation is not None else "null"
-        user_prompt = render_prompt(
+        user_prompt = learn_render_prompt(
             "score_learning_question.md",
             {
                 "WEEK_PLAN": self._week_plan_text(week_spec),

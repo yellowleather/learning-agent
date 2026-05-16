@@ -4,13 +4,17 @@ from pathlib import Path
 from coach.config import load_config
 from coach.orchestrator import WeekOrchestrator
 from coach.models import (
-    ConceptCardPayload,
     GeneratedTask,
-    LearningQuestionBankPayload,
+)
+from verify.models import (
     ObservationRecord,
+    ReflectionRecord,
+)
+from learn.models import (
+    ConceptCardPayload,
+    LearningQuestionBankPayload,
     QuestionScore,
     ReadingMaterialPayload,
-    ReflectionRecord,
 )
 
 

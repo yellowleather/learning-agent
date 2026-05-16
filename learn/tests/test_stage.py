@@ -21,18 +21,20 @@ from coach.config import AppConfig
 from coach.errors import CoachError
 from coach.models import (
     ArtifactState,
-    ConceptCard,
     Gates,
     Ledger,
-    LearningQuestion,
-    LearningSession,
     MetricsState,
     ProgressState,
+)
+from learn.models import (
+    ConceptCard,
+    LearningQuestion,
+    LearningSession,
     QuestionAttempt,
     QuestionScore,
     ReadingMaterialPayload,
 )
-from coach.stages.learn import LearnStage
+from learn.stage import LearnStage
 from coach.state import StateStore
 
 

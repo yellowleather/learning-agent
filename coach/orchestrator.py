@@ -12,16 +12,20 @@ from coach.models import (
     CheckpointState,
     CurriculumMetadata,
     Ledger,
-    LearningSession,
+    TopicChatTurn,
+)
+from verify.models import (
     ObservationRecord,
     ReflectionRecord,
-    TopicChatTurn,
+)
+from learn.models import (
+    LearningSession,
 )
 from coach.providers.base import LLMProvider
 from coach.providers.factory import get_provider
-from coach.stages.build import BuildStage
-from coach.stages.learn import LearnStage
-from coach.stages.verify import VerifyStage
+from build.stage import BuildStage
+from learn.stage import LearnStage
+from verify.stage import VerifyStage
 from coach.state import StateStore
 from coach.topic_chat import TopicChat
 

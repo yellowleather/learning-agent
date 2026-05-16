@@ -2,11 +2,24 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, Field
+
+from coach._base import StrictModel
+from verify.models import (
+    ObservationRecord,
+    ReflectionRecord,
+    VerificationRecord,
+)
 
 
-class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+# StrictModel is re-exported here for any caller that still imports it from
+# coach.models; new code should import directly from coach._base.
+__all__ = [
+    "StrictModel",
+    "ObservationRecord",
+    "ReflectionRecord",
+    "VerificationRecord",
+]
 
 
 class AppConfig(StrictModel):
@@ -39,96 +52,6 @@ class ArtifactState(StrictModel):
 class MetricsState(StrictModel):
     required: List[str] = Field(default_factory=list)
     recorded: Dict[str, Any] = Field(default_factory=dict)
-
-
-class VerificationRecord(StrictModel):
-    passed: bool
-    summary: str
-
-
-class ObservationRecord(StrictModel):
-    command: str
-    artifact_path: str
-    prompt_tokens: Optional[int] = None
-    output_tokens: Optional[int] = None
-    latency_p95_ms: Optional[float] = None
-    tokens_per_sec: Optional[float] = None
-    notes: str = ""
-    reliability: Literal["valid", "invalid_due_to_bug", "invalid_due_to_bad_measurement", "uncertain"] = "uncertain"
-
-
-class ReflectionRecord(StrictModel):
-    text: str
-    trustworthy: Optional[bool] = None
-    buggy: bool = False
-    next_fix: str = ""
-
-
-class ConceptCard(StrictModel):
-    id: str = ""
-    concept: str
-    title: str = ""
-    explanation: str
-    why_it_matters: str
-    common_mistake: str
-    quick_check_question: Optional[str] = None
-
-
-class LearningQuestion(StrictModel):
-    id: str
-    depth: Literal["baseline", "deep", "stretch"]
-    prompt_text: str
-    scoring_rubric: List[str] = Field(default_factory=list)
-
-
-class QuestionScore(StrictModel):
-    passed: bool
-    score_rationale: str
-    missing_concepts: List[str] = Field(default_factory=list)
-
-
-class QuestionAttempt(StrictModel):
-    question_id: str
-    answer: str
-    result: QuestionScore
-
-
-class LearningAssistPayload(StrictModel):
-    week: int
-    concept_cards: List[ConceptCard] = Field(default_factory=list)
-    questions: List[LearningQuestion] = Field(default_factory=list)
-
-
-class LearningQuestionBankPayload(StrictModel):
-    week: int
-    questions: List[LearningQuestion] = Field(default_factory=list)
-
-
-class ReadingMaterialPayload(StrictModel):
-    week: int
-    title: str
-    body_markdown: str
-
-
-class ConceptCardPayload(StrictModel):
-    week: int
-    concept_cards: List[ConceptCard] = Field(default_factory=list)
-
-
-class LearningSession(StrictModel):
-    week: int
-    concept_cards: List[ConceptCard] = Field(default_factory=list)
-    reading_material: Optional[ReadingMaterialPayload] = None
-    questions: List[LearningQuestion] = Field(default_factory=list)
-    attempts: List[QuestionAttempt] = Field(default_factory=list)
-
-
-class LearningBundle(StrictModel):
-    week: int
-    concept_cards: List[ConceptCard] = Field(default_factory=list)
-    reading_material: Optional[ReadingMaterialPayload] = None
-    questions: List[LearningQuestion] = Field(default_factory=list)
-    attempts: List[QuestionAttempt] = Field(default_factory=list)
 
 
 class TopicChatTurn(StrictModel):
@@ -190,75 +113,3 @@ class GeneratedTask(StrictModel):
 class TaskSession(StrictModel):
     task: GeneratedTask
     verification: Optional[VerificationRecord] = None
-
-
-class CommandRun(StrictModel):
-    """One subprocess invocation by the BuildAgent through the run_command tool.
-
-    Carries the captured *facts* of the run only — exit code and tails of
-    stdout/stderr. No judgement about whether the command succeeded relative
-    to the brief (that is review_build's job)."""
-    cmd: str
-    exit_code: int
-    stdout_tail: str
-    stderr_tail: str
-    duration_ms: int
-    truncated: bool
-
-
-class FileTouched(StrictModel):
-    """Net effect of the BuildAgent on a single file in the target repo.
-
-    `diff` is a unified diff against the file's contents at agent start,
-    truncated to a reasonable cap; `diff_truncated` signals when content
-    was clipped."""
-    path: str
-    action: Literal["create", "modify", "delete"]
-    diff: str
-    diff_truncated: bool
-
-
-class BuildReport(StrictModel):
-    """Terminal report from a BuildAgent run.
-
-    Pure facts. The agent declares `status`, `summary`, and `notes`; the
-    platform fills `commands_run`, `files_touched`, and `metrics_recorded`
-    from observed tool calls. No verification verdict — that belongs to
-    review_build."""
-    status: Literal[
-        "completed",
-        "gave_up",
-        "timed_out",
-        "stopped_by_user",
-        "errored",
-    ]
-    summary: str
-    commands_run: List[CommandRun] = Field(default_factory=list)
-    files_touched: List[FileTouched] = Field(default_factory=list)
-    metrics_recorded: Dict[str, float] = Field(default_factory=dict)
-    notes: str = ""
-
-
-class BuildSession(StrictModel):
-    """Persisted lifecycle record for a single BuildAgent run.
-
-    Lives in state/current_build.json. The streaming transcript is *not*
-    embedded here — it lives in state/current_build.transcript.jsonl so a
-    long run doesn't bloat the loaded session payload."""
-    week: int
-    started_at_utc: str
-    ended_at_utc: Optional[str] = None
-    duration_seconds: int = 0
-    turn_count: int = 0
-    report: Optional[BuildReport] = None
-
-
-class TranscriptEvent(StrictModel):
-    """One event line in state/current_build.transcript.jsonl.
-
-    `kind` is strictly enumerated; an agent that emits a new kind will
-    fail validation loudly so the enum can be extended deliberately."""
-    seq: int
-    timestamp_utc: str
-    kind: Literal["thought", "tool_call", "tool_result", "tool_error", "system"]
-    payload: Dict[str, Any] = Field(default_factory=dict)

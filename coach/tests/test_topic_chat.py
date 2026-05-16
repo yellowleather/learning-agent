@@ -12,12 +12,14 @@ import pytest
 from coach.errors import CoachError
 from coach.models import (
     ArtifactState,
-    ConceptCard,
     Gates,
     Ledger,
-    LearningSession,
     MetricsState,
     ProgressState,
+)
+from learn.models import (
+    ConceptCard,
+    LearningSession,
     ReadingMaterialPayload,
 )
 from coach.topic_chat import MAX_SELECTION_CHARS, TopicChat

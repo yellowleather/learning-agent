@@ -17,10 +17,14 @@ from coach.errors import CoachError
 from coach.models import (
     CheckpointState,
     Ledger,
-    LearningSession,
+)
+from verify.models import (
     ObservationRecord,
     ReflectionRecord,
     VerificationRecord,
+)
+from learn.models import (
+    LearningSession,
 )
 from coach.state import StateStore
 
