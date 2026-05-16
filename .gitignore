@@ -5,3 +5,4 @@ __pycache__/
 state/
 .env
 tmp/
+.scratch_deleted/
