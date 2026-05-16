@@ -3,8 +3,8 @@ from types import SimpleNamespace
 import httpx
 import openai
 
-from learning_agent.errors import LearningAgentError
-from learning_agent.models import (
+from coach.errors import CoachError
+from coach.models import (
     ConceptCardPayload,
     LearningQuestion,
     LearningQuestionBankPayload,
@@ -14,7 +14,7 @@ from learning_agent.models import (
     ReadingMaterialPayload,
     TopicChatTurn,
 )
-from learning_agent.providers.openai_provider import OpenAIProvider
+from coach.providers.openai_provider import OpenAIProvider
 
 
 def _week_spec() -> dict:
@@ -379,7 +379,7 @@ def test_stream_topic_chat_surfaces_connection_errors_clearly(monkeypatch):
                 message="hello",
             )
         )
-    except LearningAgentError as exc:
+    except CoachError as exc:
         assert str(exc) == "OpenAI connection failed. Check network access and API configuration."
     else:  # pragma: no cover
-        raise AssertionError("Expected connection failure to raise LearningAgentError.")
+        raise AssertionError("Expected connection failure to raise CoachError.")

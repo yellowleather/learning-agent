@@ -2,9 +2,9 @@ import io
 import json
 import urllib.error
 
-from learning_agent.errors import LearningAgentError
-from learning_agent.models import ProgressState, ReadingMaterialPayload, TopicChatTurn
-from learning_agent.providers.anthropic_provider import AnthropicProvider
+from coach.errors import CoachError
+from coach.models import ProgressState, ReadingMaterialPayload, TopicChatTurn
+from coach.providers.anthropic_provider import AnthropicProvider
 
 
 def _week_spec() -> dict:
@@ -121,10 +121,10 @@ def test_messages_create_surfaces_auth_failure(monkeypatch):
             temperature=0.2,
             max_tokens=100,
         )
-    except LearningAgentError as exc:
+    except CoachError as exc:
         assert str(exc) == "Anthropic authentication failed. Check ANTHROPIC_API_KEY."
     else:  # pragma: no cover
-        raise AssertionError("Expected Anthropic auth failure to raise LearningAgentError.")
+        raise AssertionError("Expected Anthropic auth failure to raise CoachError.")
 
 
 def test_generate_concept_cards_from_reading_uses_week_plan(monkeypatch):

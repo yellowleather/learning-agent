@@ -6,8 +6,8 @@ from typing import Optional, Type, TypeVar
 
 from pydantic import BaseModel
 
-from learning_agent.errors import LearningAgentError
-from learning_agent.models import (
+from coach.errors import CoachError
+from coach.models import (
     AppConfig,
     GeneratedTask,
     Ledger,
@@ -50,7 +50,7 @@ class StateStore:
 
     def initialize_ledger(self, metadata, week: dict) -> Ledger:
         if self.ledger_path.exists():
-            raise LearningAgentError(f"Ledger already exists at {self.ledger_path}.")
+            raise CoachError(f"Ledger already exists at {self.ledger_path}.")
         ledger = Ledger(
             curriculum_metadata=metadata,
             state={
@@ -98,9 +98,9 @@ class StateStore:
         try:
             raw = json.loads(path.read_text())
         except FileNotFoundError as exc:
-            raise LearningAgentError(f"Missing state file at {path}.") from exc
+            raise CoachError(f"Missing state file at {path}.") from exc
         except json.JSONDecodeError as exc:
-            raise LearningAgentError(f"State file {path} is not valid JSON: {exc}") from exc
+            raise CoachError(f"State file {path} is not valid JSON: {exc}") from exc
         return model.model_validate(raw)
 
     def _write_json(self, path: Path, payload: dict) -> None:

@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
 
-from learning_agent.config import load_config
-from learning_agent.controller import LearningController
-from learning_agent.models import (
+from coach.config import load_config
+from coach.orchestrator import WeekOrchestrator
+from coach.models import (
     ConceptCardPayload,
     GeneratedTask,
     LearningQuestionBankPayload,
@@ -403,7 +403,7 @@ def write_config(tmp_path: Path, roadmap_path: Path, target_repo_path: Path) -> 
         "target_repo_path": str(target_repo_path.relative_to(tmp_path)),
         "state_dir": "state",
     }
-    (tmp_path / "learning_agent.config.json").write_text(json.dumps(payload))
+    (tmp_path / "coach.config.json").write_text(json.dumps(payload))
 
 
 def write_roadmap(tmp_path: Path) -> Path:
@@ -531,16 +531,16 @@ def make_controller(tmp_path: Path, monkeypatch):
     write_config(tmp_path, roadmap_path, target_repo)
     monkeypatch.chdir(tmp_path)
     repo_root, config = load_config()
-    controller = LearningController(repo_root, config)
-    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: FakeProvider())
+    controller = WeekOrchestrator(repo_root, config)
+    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: FakeProvider())
     return controller, target_repo
 
 
-def pass_required_learning_questions(controller: LearningController) -> None:
-    session = controller.generate_learning_assist()
+def pass_required_learning_questions(controller: WeekOrchestrator) -> None:
+    session = controller.learn.generate_assist()
     for question in session.questions:
         if question.depth == "baseline":
-            result = controller.answer_learning_question(question.id, f"Answer for {question.id}.")
+            result = controller.learn.answer_question(question.id, f"Answer for {question.id}.")
             assert result.passed is True
 
 
@@ -551,7 +551,7 @@ def test_full_week_one_transition(monkeypatch, tmp_path):
     assert ledger.state.active_dirs == ["simple_server", "docs"]
     pass_required_learning_questions(controller)
 
-    task_session = controller.generate_task()
+    task_session = controller.build.generate_task()
     assert task_session.task.required_files == [
         "simple_server/server.py",
         "simple_server/benchmark.py",
@@ -562,15 +562,15 @@ def test_full_week_one_transition(monkeypatch, tmp_path):
     (target_repo / "simple_server" / "benchmark.py").write_text("print('ok')\n")
     (target_repo / "docs" / "baseline_results.md").write_text("latency_p95: 10\n")
 
-    ledger = controller.sync_artifacts()
+    ledger = controller.build.sync_artifacts()
     assert ledger.state.gates.implementation_complete is True
 
-    controller.record_metric("latency_p95", 10.0)
-    controller.record_metric("tokens_per_sec", 25.0)
-    ledger = controller.record_verification(True, "Local verification passed.")
+    controller.verify.record_metric("latency_p95", 10.0)
+    controller.verify.record_metric("tokens_per_sec", 25.0)
+    ledger = controller.verify.record_verification(True, "Local verification passed.")
     assert ledger.state.gates.verification_passed is True
 
-    ledger = controller.record_observation(
+    ledger = controller.verify.record_observation(
         ObservationRecord(
             command=".venv/bin/python simple_server/benchmark.py",
             artifact_path="docs/baseline_results.md",
@@ -584,7 +584,7 @@ def test_full_week_one_transition(monkeypatch, tmp_path):
     )
     assert ledger.state.gates.evidence_reliable is True
 
-    ledger = controller.record_reflection(
+    ledger = controller.verify.record_reflection(
         ReflectionRecord(
             text="The measurement is trustworthy and matches the intended baseline.",
             trustworthy=True,
@@ -607,7 +607,7 @@ def test_generate_task_requires_gate(monkeypatch, tmp_path):
     controller.initialize()
 
     try:
-        controller.generate_task()
+        controller.build.generate_task()
     except Exception as exc:  # pragma: no cover - assertion below narrows the behavior.
         assert "learning check passes" in str(exc)
     else:  # pragma: no cover
@@ -618,7 +618,7 @@ def test_learning_assist_flow_records_evidence_and_reflection(monkeypatch, tmp_p
     controller, target_repo = make_controller(tmp_path, monkeypatch)
     controller.initialize()
 
-    session = controller.generate_learning_assist()
+    session = controller.learn.generate_assist()
     assert session.week == 1
     assert len(session.questions) == 50
     assert session.reading_material is not None
@@ -626,24 +626,24 @@ def test_learning_assist_flow_records_evidence_and_reflection(monkeypatch, tmp_p
     assert "## How This Week Works" in session.reading_material.body_markdown
     assert "## Prefill, Decode, And Why The Split Matters" in session.reading_material.body_markdown
 
-    bundle = controller.get_learning_bundle()
+    bundle = controller.learn.get_bundle()
     assert bundle is not None
     assert bundle.reading_material is not None
 
     baseline_questions = [question for question in session.questions if question.depth == "baseline"]
     for question in baseline_questions:
-        result = controller.answer_learning_question(question.id, f"Answer for {question.id}.")
+        result = controller.learn.answer_question(question.id, f"Answer for {question.id}.")
         assert result.passed is True
     assert controller.status()["gates"]["learning_check_passed"] is True
 
-    controller.generate_task()
+    controller.build.generate_task()
     (target_repo / "simple_server" / "server.py").write_text("print('ok')\n")
     (target_repo / "simple_server" / "benchmark.py").write_text("print('ok')\n")
     (target_repo / "docs" / "baseline_results.md").write_text("latency_p95: 10\n")
-    controller.sync_artifacts()
-    controller.record_verification(True, "Local verification passed.")
+    controller.build.sync_artifacts()
+    controller.verify.record_verification(True, "Local verification passed.")
 
-    ledger = controller.record_observation(
+    ledger = controller.verify.record_observation(
         ObservationRecord(
             command=".venv/bin/python simple_server/benchmark.py",
             artifact_path="docs/baseline_results.md",
@@ -659,7 +659,7 @@ def test_learning_assist_flow_records_evidence_and_reflection(monkeypatch, tmp_p
     assert ledger.state.metrics.recorded["latency_p95"] == 840.0
     assert ledger.state.metrics.recorded["tokens_per_sec"] == 32.4
 
-    ledger = controller.record_reflection(
+    ledger = controller.verify.record_reflection(
         ReflectionRecord(
             text="The benchmark seems trustworthy after warm-up and repeated runs.",
             trustworthy=True,
@@ -680,21 +680,21 @@ def test_compare_learning_providers_resets_state_and_writes_outputs(monkeypatch,
     controller, target_repo = make_controller(tmp_path, monkeypatch)
     controller.initialize()
 
-    session = controller.generate_learning_assist()
+    session = controller.learn.generate_assist()
     assert session.questions
     for question in session.questions:
         if question.depth == "baseline":
-            controller.answer_learning_question(question.id, f"Answer for {question.id}.")
-    controller.generate_task()
+            controller.learn.answer_question(question.id, f"Answer for {question.id}.")
+    controller.build.generate_task()
     (target_repo / "simple_server" / "server.py").write_text("print('ok')\n")
     (target_repo / "simple_server" / "benchmark.py").write_text("print('ok')\n")
     (target_repo / "docs" / "baseline_results.md").write_text("latency_p95: 10\n")
-    controller.sync_artifacts()
-    controller.record_metric("latency_p95", 10.0)
-    controller.record_verification(True, "Local verification passed.")
+    controller.build.sync_artifacts()
+    controller.verify.record_metric("latency_p95", 10.0)
+    controller.verify.record_verification(True, "Local verification passed.")
 
     output_dir = tmp_path / "tmp" / "learning_compare" / "case"
-    result = controller.compare_learning_providers(
+    result = controller.learn.compare_providers(
         providers=[
             ("claude", "claude-test", VariantProvider("claude")),
             ("gpt", "gpt-test", VariantProvider("gpt")),
@@ -703,8 +703,8 @@ def test_compare_learning_providers_resets_state_and_writes_outputs(monkeypatch,
     )
 
     assert result["output_dir"] == str(output_dir)
-    assert controller.get_learning_session() is None
-    assert controller.get_task_session() is None
+    assert controller.learn.get_session() is None
+    assert controller.build.get_task_session() is None
     assert result["providers"][0]["status"] == "valid"
     assert result["providers"][1]["status"] == "valid"
 
@@ -732,7 +732,7 @@ def test_compare_learning_providers_continues_when_one_provider_is_invalid(monke
     controller.initialize()
 
     output_dir = tmp_path / "tmp" / "learning_compare" / "invalid-case"
-    result = controller.compare_learning_providers(
+    result = controller.learn.compare_providers(
         providers=[
             ("claude", "claude-test", InvalidQuestionBankProvider("claude")),
             ("gpt", "gpt-test", VariantProvider("gpt")),
@@ -756,9 +756,9 @@ def test_compare_learning_providers_continues_when_one_provider_is_invalid(monke
 def test_answer_topic_chat_builds_learn_context(monkeypatch, tmp_path):
     controller, _target_repo = make_controller(tmp_path, monkeypatch)
     provider = ChatCapturingProvider()
-    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: provider)
+    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: provider)
     controller.initialize()
-    controller.generate_learning_assist()
+    controller.learn.generate_assist()
 
     result = controller.answer_topic_chat(
         message="How should I connect this to the benchmark task?",
@@ -782,9 +782,9 @@ def test_answer_topic_chat_builds_learn_context(monkeypatch, tmp_path):
 def test_answer_topic_chat_includes_selected_ui_text(monkeypatch, tmp_path):
     controller, _target_repo = make_controller(tmp_path, monkeypatch)
     provider = ChatCapturingProvider()
-    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: provider)
+    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: provider)
     controller.initialize()
-    controller.generate_learning_assist()
+    controller.learn.generate_assist()
 
     result = controller.answer_topic_chat(
         message="Explain this.",
@@ -805,9 +805,9 @@ def test_answer_topic_chat_includes_selected_ui_text(monkeypatch, tmp_path):
 def test_stream_topic_chat_emits_events_and_context(monkeypatch, tmp_path):
     controller, _target_repo = make_controller(tmp_path, monkeypatch)
     provider = StreamingChatProvider()
-    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: provider)
+    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: provider)
     controller.initialize()
-    controller.generate_learning_assist()
+    controller.learn.generate_assist()
 
     events = list(
         controller.stream_topic_chat(
@@ -832,7 +832,7 @@ def test_stream_topic_chat_emits_events_and_context(monkeypatch, tmp_path):
 
 def test_answer_topic_chat_normalizes_json_wrapped_reply(monkeypatch, tmp_path):
     controller, _target_repo = make_controller(tmp_path, monkeypatch)
-    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: JsonChatProvider())
+    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: JsonChatProvider())
     controller.initialize()
 
     result = controller.answer_topic_chat(
@@ -846,7 +846,7 @@ def test_answer_topic_chat_normalizes_json_wrapped_reply(monkeypatch, tmp_path):
 
 def test_stream_topic_chat_normalizes_json_wrapped_final_reply(monkeypatch, tmp_path):
     controller, _target_repo = make_controller(tmp_path, monkeypatch)
-    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: JsonStreamingChatProvider())
+    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: JsonStreamingChatProvider())
     controller.initialize()
 
     events = list(

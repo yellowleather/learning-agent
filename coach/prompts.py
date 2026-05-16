@@ -2,7 +2,7 @@ from pathlib import Path
 import re
 from typing import Dict, Optional
 
-from learning_agent.errors import LearningAgentError
+from coach.errors import CoachError
 
 
 def load_prompt(name: str) -> str:
@@ -10,7 +10,7 @@ def load_prompt(name: str) -> str:
     try:
         return prompt_path.read_text().strip()
     except FileNotFoundError as exc:
-        raise LearningAgentError(f"Prompt asset not found: {prompt_path}") from exc
+        raise CoachError(f"Prompt asset not found: {prompt_path}") from exc
 
 
 def render_prompt(name: str, replacements: Optional[Dict[str, str]] = None) -> str:
@@ -20,5 +20,5 @@ def render_prompt(name: str, replacements: Optional[Dict[str, str]] = None) -> s
 
     unresolved = sorted(set(re.findall(r"\{\{[A-Z0-9_]+\}\}", prompt)))
     if unresolved:
-        raise LearningAgentError(f"Prompt asset {name} has unresolved placeholders: {', '.join(unresolved)}")
+        raise CoachError(f"Prompt asset {name} has unresolved placeholders: {', '.join(unresolved)}")
     return prompt

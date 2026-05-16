@@ -1,4 +1,4 @@
-from learning_agent.cli import app
+from coach.cli import app
 
 
 if __name__ == "__main__":

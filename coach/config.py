@@ -5,11 +5,11 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from learning_agent.errors import LearningAgentError
-from learning_agent.models import AppConfig
+from coach.errors import CoachError
+from coach.models import AppConfig
 
 
-CONFIG_FILENAME = "learning_agent.config.json"
+CONFIG_FILENAME = "coach.config.json"
 DOTENV_FILENAME = ".env"
 
 
@@ -18,7 +18,7 @@ def locate_repo_root(start: Optional[Path] = None) -> Path:
     for path in [current, *current.parents]:
         if (path / CONFIG_FILENAME).exists():
             return path
-    raise LearningAgentError(
+    raise CoachError(
         f"Could not find {CONFIG_FILENAME}. Run commands from the repo or create the config file first."
     )
 
@@ -30,9 +30,9 @@ def load_config(start: Optional[Path] = None) -> tuple[Path, AppConfig]:
     try:
         data = json.loads(config_path.read_text())
     except FileNotFoundError as exc:
-        raise LearningAgentError(f"Missing config file at {config_path}.") from exc
+        raise CoachError(f"Missing config file at {config_path}.") from exc
     except json.JSONDecodeError as exc:
-        raise LearningAgentError(f"Config file {config_path} is not valid JSON: {exc}") from exc
+        raise CoachError(f"Config file {config_path} is not valid JSON: {exc}") from exc
     return repo_root, AppConfig.model_validate(data)
 
 

@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "learning-agent"
+name = "coach"
 version = "0.1.0"
-description = "Phase 1 guided single-controller learning agent"
+description = "Curriculum-paced learning workspace for senior engineers"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
@@ -20,17 +20,25 @@ dev = [
 ]
 
 [project.scripts]
-learning_agent = "learning_agent.cli:app"
+coach = "coach.cli:app"
 
 [tool.setuptools]
 packages = [
-  "learning_agent",
-  "learning_agent.providers",
+  "coach",
+  "coach.providers",
+  "coach.stages",
+  "curriculum",
 ]
 
 [tool.setuptools.package-data]
-learning_agent = ["prompts/*.md", "assets/*.png", "assets/illustrations/*.svg"]
+coach = ["prompts/*.md", "assets/*.png", "assets/illustrations/*.svg"]
+curriculum = ["prompts/*.md"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
-testpaths = ["tests"]
+testpaths = [
+  "coach/tests",
+  "coach/stages/tests",
+  "coach/providers/tests",
+  "curriculum/tests",
+]

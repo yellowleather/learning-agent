@@ -7,8 +7,8 @@ from typing import Any, Type, TypeVar
 
 from pydantic import BaseModel
 
-from learning_agent.errors import LearningAgentError
-from learning_agent.models import (
+from coach.errors import CoachError
+from coach.models import (
     ConceptCardPayload,
     GeneratedTask,
     LearningQuestion,
@@ -19,8 +19,8 @@ from learning_agent.models import (
     ReadingMaterialPayload,
     TopicChatTurn,
 )
-from learning_agent.prompts import load_prompt, render_prompt
-from learning_agent.providers.base import LLMProvider
+from coach.prompts import load_prompt, render_prompt
+from coach.providers.base import LLMProvider
 
 
 ResponseModelT = TypeVar("ResponseModelT", bound=BaseModel)
@@ -140,7 +140,7 @@ class OpenAIProvider(LLMProvider):
         )
         content = response.choices[0].message.content
         if not content or not content.strip():
-            raise LearningAgentError("OpenAI provider returned an empty topic chat response.")
+            raise CoachError("OpenAI provider returned an empty topic chat response.")
         return content.strip()
 
     def stream_topic_chat(
@@ -169,7 +169,7 @@ class OpenAIProvider(LLMProvider):
             emitted = True
             yield text
         if not emitted:
-            raise LearningAgentError("OpenAI provider returned an empty topic chat response.")
+            raise CoachError("OpenAI provider returned an empty topic chat response.")
 
     def _topic_chat_messages(
         self,
@@ -230,7 +230,7 @@ class OpenAIProvider(LLMProvider):
         )
         content = response.choices[0].message.content
         if not content:
-            raise LearningAgentError("OpenAI provider returned an empty response.")
+            raise CoachError("OpenAI provider returned an empty response.")
         payload = self._extract_json(content)
         payload = self._normalize_payload(payload, response_model)
         return response_model.model_validate(payload)
@@ -246,51 +246,51 @@ class OpenAIProvider(LLMProvider):
         )
         content = response.choices[0].message.content
         if not content or not content.strip():
-            raise LearningAgentError("OpenAI provider returned an empty response.")
+            raise CoachError("OpenAI provider returned an empty response.")
         return content.strip()
 
     def _chat_completions_create(self, **kwargs: Any):
         client = self._client()
         try:
             return client.chat.completions.create(**kwargs)
-        except LearningAgentError:
+        except CoachError:
             raise
         except Exception as exc:
             raise self._translate_chat_error(exc) from exc
 
-    def _translate_chat_error(self, exc: Exception) -> LearningAgentError:
+    def _translate_chat_error(self, exc: Exception) -> CoachError:
         try:
             import openai
         except ImportError:
-            return LearningAgentError(str(exc) or "OpenAI request failed.")
+            return CoachError(str(exc) or "OpenAI request failed.")
 
         if isinstance(exc, openai.AuthenticationError):
-            return LearningAgentError("OpenAI authentication failed. Check OPENAI_API_KEY.")
+            return CoachError("OpenAI authentication failed. Check OPENAI_API_KEY.")
         if isinstance(exc, openai.APIConnectionError):
-            return LearningAgentError("OpenAI connection failed. Check network access and API configuration.")
+            return CoachError("OpenAI connection failed. Check network access and API configuration.")
         if isinstance(exc, openai.APITimeoutError):
-            return LearningAgentError("OpenAI request timed out. Try again.")
+            return CoachError("OpenAI request timed out. Try again.")
         if isinstance(exc, openai.RateLimitError):
-            return LearningAgentError("OpenAI rate limit hit. Try again shortly.")
+            return CoachError("OpenAI rate limit hit. Try again shortly.")
         if isinstance(exc, openai.APIStatusError):
             status_code = getattr(exc, "status_code", None)
             if status_code:
-                return LearningAgentError(f"OpenAI request failed with status {status_code}.")
-            return LearningAgentError("OpenAI request failed.")
+                return CoachError(f"OpenAI request failed with status {status_code}.")
+            return CoachError("OpenAI request failed.")
         if isinstance(exc, openai.OpenAIError):
-            return LearningAgentError(str(exc) or "OpenAI request failed.")
-        return LearningAgentError(str(exc) or "OpenAI request failed.")
+            return CoachError(str(exc) or "OpenAI request failed.")
+        return CoachError(str(exc) or "OpenAI request failed.")
 
     def _client(self):
         if not self.model:
-            raise LearningAgentError("Config field `model` must be set before using the OpenAI provider.")
+            raise CoachError("Config field `model` must be set before using the OpenAI provider.")
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise LearningAgentError("OPENAI_API_KEY must be set before using the OpenAI provider.")
+            raise CoachError("OPENAI_API_KEY must be set before using the OpenAI provider.")
         try:
             from openai import OpenAI
         except ImportError as exc:
-            raise LearningAgentError("The `openai` package is not installed.") from exc
+            raise CoachError("The `openai` package is not installed.") from exc
         return OpenAI(api_key=api_key)
 
     def _extract_json(self, content: str):
@@ -302,7 +302,7 @@ class OpenAIProvider(LLMProvider):
         try:
             return json.loads(text)
         except json.JSONDecodeError as exc:
-            raise LearningAgentError(f"Model response was not valid JSON: {exc}") from exc
+            raise CoachError(f"Model response was not valid JSON: {exc}") from exc
 
     def _normalize_payload(self, payload: Any, response_model: Type[ResponseModelT]) -> Any:
         if not isinstance(payload, dict):

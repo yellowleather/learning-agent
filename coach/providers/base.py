@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from typing import Any
 
-from learning_agent.models import (
+from coach.models import (
     ConceptCardPayload,
     GeneratedTask,
     LearningQuestion,

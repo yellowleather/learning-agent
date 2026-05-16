@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
-from learning_agent.cli import app
-from learning_agent.models import (
+from coach.cli import app
+from coach.models import (
     ConceptCardPayload,
     LearningQuestionBankPayload,
     QuestionScore,
@@ -299,10 +299,10 @@ You can ship the system.
         "target_repo_path": "ai_inference_engineering",
         "state_dir": "state",
     }
-    (tmp_path / "learning_agent.config.json").write_text(json.dumps(config))
+    (tmp_path / "coach.config.json").write_text(json.dumps(config))
     (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: FakeProvider())
+    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: FakeProvider())
 
     init_result = runner.invoke(app, ["init"])
     assert init_result.exit_code == 0
@@ -394,11 +394,11 @@ You can ship the system.
         "target_repo_path": "ai_inference_engineering",
         "state_dir": "state",
     }
-    (tmp_path / "learning_agent.config.json").write_text(json.dumps(config))
+    (tmp_path / "coach.config.json").write_text(json.dumps(config))
     (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
     (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("learning_agent.controller.get_provider", lambda _config: FakeProvider())
+    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: FakeProvider())
 
     assert runner.invoke(app, ["init"]).exit_code == 0
 
@@ -418,12 +418,8 @@ You can ship the system.
 def test_learn_compare_models_writes_comparison_outputs(monkeypatch, tmp_path):
     captured = {}
 
-    class FakeController:
-        def __init__(self):
-            self.repo_root = tmp_path
-            self.config = SimpleNamespace(provider="openai", model="gpt-4o")
-
-        def compare_learning_providers(self, providers, output_dir):
+    class FakeLearn:
+        def compare_providers(self, providers, output_dir):
             captured["providers"] = [(label, model, provider.__class__.__name__) for label, model, provider in providers]
             captured["output_dir"] = output_dir
             return {
@@ -439,7 +435,13 @@ def test_learn_compare_models_writes_comparison_outputs(monkeypatch, tmp_path):
                 ],
             }
 
-    monkeypatch.setattr("learning_agent.cli.get_controller", lambda: FakeController())
+    class FakeController:
+        def __init__(self):
+            self.repo_root = tmp_path
+            self.config = SimpleNamespace(provider="openai", model="gpt-4o")
+            self.learn = FakeLearn()
+
+    monkeypatch.setattr("coach.cli.get_controller", lambda: FakeController())
 
     result = runner.invoke(app, ["learn", "compare-models", "--claude-model", "claude-test"])
 

@@ -10,18 +10,18 @@ from typing import Optional
 
 import typer
 
-from learning_agent.config import load_config, load_dotenv, locate_repo_root
-from learning_agent.controller import LearningController
-from learning_agent.curriculum_bootstrap import (
+from coach.config import load_config, load_dotenv, locate_repo_root
+from coach.orchestrator import WeekOrchestrator
+from curriculum.bootstrap import (
     DEFAULT_ANTHROPIC_MODEL,
     DEFAULT_CURRICULUM_PROMPT_PATH,
     bootstrap_curriculum_workspace,
 )
-from learning_agent.errors import LearningAgentError
-from learning_agent.models import ObservationRecord, ReflectionRecord
-from learning_agent.providers.anthropic_provider import AnthropicProvider
-from learning_agent.providers.openai_provider import OpenAIProvider
-from learning_agent.ui import DEFAULT_UI_HOST, DEFAULT_UI_PORT, serve_ui
+from coach.errors import CoachError
+from coach.models import ObservationRecord, ReflectionRecord
+from coach.providers.anthropic_provider import AnthropicProvider
+from coach.providers.openai_provider import OpenAIProvider
+from coach.ui import DEFAULT_UI_HOST, DEFAULT_UI_PORT, serve_ui
 
 
 app = typer.Typer(help="Guided single-controller learning agent.")
@@ -37,19 +37,19 @@ app.add_typer(curriculum_app, name="curriculum")
 
 RELOAD_POLL_INTERVAL_SECONDS = 0.75
 RELOAD_WATCH_TARGETS = (
-    "learning_agent",
-    "learning_agent.config.json",
+    "coach",
+    "coach.config.json",
     "pyproject.toml",
     ".env",
 )
 
 
-def get_controller() -> LearningController:
+def get_controller() -> WeekOrchestrator:
     repo_root, config = load_config()
-    return LearningController(repo_root, config)
+    return WeekOrchestrator(repo_root, config)
 
 
-def exit_on_error(exc: LearningAgentError) -> None:
+def exit_on_error(exc: CoachError) -> None:
     typer.secho(str(exc), fg=typer.colors.RED, err=True)
     raise typer.Exit(code=1)
 
@@ -81,7 +81,7 @@ def build_reload_command(host: str, port: int) -> list[str]:
     return [
         sys.executable,
         "-m",
-        "learning_agent",
+        "coach",
         "serve",
         "--host",
         host,
@@ -135,7 +135,7 @@ def init_command() -> None:
         controller = get_controller()
         ledger = controller.initialize()
         typer.echo(f"Initialized Week {ledger.state.current_week} in {controller.state.ledger_path}.")
-    except LearningAgentError as exc:
+    except CoachError as exc:
         exit_on_error(exc)
 
 
@@ -171,7 +171,7 @@ def curriculum_bootstrap_command(
         typer.echo(f"Plan: {result.plan_path}")
         typer.echo(f"Prompt: {result.prompt_path}")
         typer.echo(f"Model: {result.model}")
-    except LearningAgentError as exc:
+    except CoachError as exc:
         exit_on_error(exc)
 
 
@@ -208,7 +208,7 @@ def status_command() -> None:
                 typer.echo(f"- {checkpoint['title']}: {checkpoint['status']} ({checkpoint['reason']})")
         if status["approval_blockers"]:
             typer.echo(f"Approval blockers: {'; '.join(status['approval_blockers'])}")
-    except LearningAgentError as exc:
+    except CoachError as exc:
         exit_on_error(exc)
 
 
@@ -216,7 +216,7 @@ def status_command() -> None:
 def learn_generate_command() -> None:
     try:
         controller = get_controller()
-        session = controller.generate_learning_assist()
+        session = controller.learn.generate_assist()
         typer.echo(f"Generated Learning Assist for Week {session.week}.")
         typer.echo(f"Concept cards: {len(session.concept_cards)}")
         typer.echo(f"Questions: {len(session.questions)}")
@@ -225,7 +225,7 @@ def learn_generate_command() -> None:
                 f"- {question.id} [{question.depth}] "
                 f"{question.prompt_text}"
             )
-    except LearningAgentError as exc:
+    except CoachError as exc:
         exit_on_error(exc)
 
 
@@ -257,7 +257,7 @@ def learn_compare_models_command(
         )
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         comparison_root = (controller.repo_root / output_dir / timestamp).resolve()
-        result = controller.compare_learning_providers(
+        result = controller.learn.compare_providers(
             providers=[
                 ("claude", resolved_claude_model, AnthropicProvider(model=resolved_claude_model)),
                 ("gpt", resolved_gpt_model, OpenAIProvider(model=resolved_gpt_model)),
@@ -273,7 +273,7 @@ def learn_compare_models_command(
             )
             if provider_result.get("error"):
                 typer.echo(f"  error: {provider_result['error']}")
-    except LearningAgentError as exc:
+    except CoachError as exc:
         exit_on_error(exc)
 
 
@@ -284,12 +284,12 @@ def learn_answer_command(
 ) -> None:
     try:
         controller = get_controller()
-        result = controller.answer_learning_question(question_id, answer)
+        result = controller.learn.answer_question(question_id, answer)
         typer.echo("Pass" if result.passed else "Fail")
         typer.echo(result.score_rationale)
         if result.missing_concepts:
             typer.echo(f"Missing concepts: {', '.join(result.missing_concepts)}")
-    except LearningAgentError as exc:
+    except CoachError as exc:
         exit_on_error(exc)
 
 
@@ -297,10 +297,10 @@ def learn_answer_command(
 def task_generate_command() -> None:
     try:
         controller = get_controller()
-        task_session = controller.generate_task()
+        task_session = controller.build.generate_task()
         typer.echo(task_session.task.summary)
         typer.echo(json.dumps(task_session.task.model_dump(mode="json"), indent=2, sort_keys=True))
-    except LearningAgentError as exc:
+    except CoachError as exc:
         exit_on_error(exc)
 
 
@@ -308,11 +308,11 @@ def task_generate_command() -> None:
 def record_sync_command() -> None:
     try:
         controller = get_controller()
-        ledger = controller.sync_artifacts()
+        ledger = controller.build.sync_artifacts()
         typer.echo(
             f"Completed {len(ledger.state.artifacts.completed_files)}/{len(ledger.state.artifacts.required_files)} required files."
         )
-    except LearningAgentError as exc:
+    except CoachError as exc:
         exit_on_error(exc)
 
 
@@ -323,9 +323,9 @@ def record_metric_command(
 ) -> None:
     try:
         controller = get_controller()
-        ledger = controller.record_metric(key, value)
+        ledger = controller.verify.record_metric(key, value)
         typer.echo(f"Recorded metric {key}={ledger.state.metrics.recorded[key]}.")
-    except LearningAgentError as exc:
+    except CoachError as exc:
         exit_on_error(exc)
 
 
@@ -336,9 +336,9 @@ def record_verify_command(
 ) -> None:
     try:
         controller = get_controller()
-        ledger = controller.record_verification(passed, summary)
+        ledger = controller.verify.record_verification(passed, summary)
         typer.echo(f"Verification recorded: {'passed' if ledger.state.gates.verification_passed else 'failed'}.")
-    except LearningAgentError as exc:
+    except CoachError as exc:
         exit_on_error(exc)
 
 
@@ -368,12 +368,12 @@ def record_observation_command(
             tokens_per_sec=tokens_per_sec,
             notes=notes,
         )
-        ledger = controller.record_observation(observation)
+        ledger = controller.verify.record_observation(observation)
         typer.echo(
             "Observation recorded. "
             f"Evidence reliability is {'valid' if ledger.state.gates.evidence_reliable else 'blocked'}."
         )
-    except LearningAgentError as exc:
+    except CoachError as exc:
         exit_on_error(exc)
 
 
@@ -391,9 +391,9 @@ def record_reflection_command(
     try:
         controller = get_controller()
         reflection = ReflectionRecord(text=text, trustworthy=trustworthy, buggy=buggy, next_fix=next_fix)
-        controller.record_reflection(reflection)
+        controller.verify.record_reflection(reflection)
         typer.echo("Reflection recorded.")
-    except LearningAgentError as exc:
+    except CoachError as exc:
         exit_on_error(exc)
 
 
@@ -403,7 +403,7 @@ def approve_command() -> None:
         controller = get_controller()
         ledger = controller.approve_week()
         typer.echo(f"Week {ledger.state.current_week} approved.")
-    except LearningAgentError as exc:
+    except CoachError as exc:
         exit_on_error(exc)
 
 
@@ -413,7 +413,7 @@ def advance_command() -> None:
         controller = get_controller()
         ledger = controller.advance_week()
         typer.echo(f"Advanced to Week {ledger.state.current_week}.")
-    except LearningAgentError as exc:
+    except CoachError as exc:
         exit_on_error(exc)
 
 
@@ -429,5 +429,5 @@ def serve_command(
             serve_with_reload(repo_root, host=host, port=port)
         else:
             serve_ui(host=host, port=port)
-    except LearningAgentError as exc:
+    except CoachError as exc:
         exit_on_error(exc)
