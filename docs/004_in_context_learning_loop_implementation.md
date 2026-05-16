@@ -320,7 +320,7 @@ The prompt split is:
 
 The curriculum bootstrap prompt remains separate under:
 
-- [curriculum_generation/prompts/ai_inference_engineering_8_week_plan.md](/Users/prakhar/learning_agent/curriculum_generation/prompts/ai_inference_engineering_8_week_plan.md)
+- [curriculum/prompts/ai_inference_engineering_8_week_plan.md](/Users/prakhar/learning_agent/curriculum/prompts/ai_inference_engineering_8_week_plan.md)
 
 That prompt is not part of the runtime learning loop itself.
 
