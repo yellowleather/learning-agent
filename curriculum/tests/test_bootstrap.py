@@ -2,8 +2,8 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from learning_agent.cli import app
-from learning_agent.curriculum_bootstrap import BootstrappedWorkspace, bootstrap_curriculum_workspace
+from coach.cli import app
+from curriculum.bootstrap import BootstrappedWorkspace, bootstrap_curriculum_workspace
 
 
 runner = CliRunner()
@@ -37,7 +37,7 @@ demo_workspace/
 
 
 def test_bootstrap_curriculum_workspace_uses_existing_empty_repo(monkeypatch, tmp_path):
-    prompt_path = tmp_path / "curriculum_generation" / "prompts" / "demo.md"
+    prompt_path = tmp_path / "curriculum" / "prompts" / "demo.md"
     prompt_path.parent.mkdir(parents=True, exist_ok=True)
     prompt_path.write_text("Generate a roadmap.")
 
@@ -50,7 +50,7 @@ def test_bootstrap_curriculum_workspace_uses_existing_empty_repo(monkeypatch, tm
     def fake_initialize_git_repo(workspace_root: Path) -> None:
         initialized_repos.append(workspace_root)
 
-    monkeypatch.setattr("learning_agent.curriculum_bootstrap._initialize_git_repo", fake_initialize_git_repo)
+    monkeypatch.setattr("curriculum.bootstrap._initialize_git_repo", fake_initialize_git_repo)
 
     client = FakeAnthropicClient()
 
@@ -74,7 +74,7 @@ def test_bootstrap_curriculum_workspace_uses_existing_empty_repo(monkeypatch, tm
 
 
 def test_bootstrap_curriculum_workspace_sends_prompt_verbatim(monkeypatch, tmp_path):
-    prompt_path = tmp_path / "curriculum_generation" / "prompts" / "demo.md"
+    prompt_path = tmp_path / "curriculum" / "prompts" / "demo.md"
     prompt_path.parent.mkdir(parents=True, exist_ok=True)
     prompt_body = "Exact prompt body.\nNo extra instructions."
     prompt_path.write_text(prompt_body)
@@ -97,7 +97,7 @@ def test_bootstrap_curriculum_workspace_sends_prompt_verbatim(monkeypatch, tmp_p
 
 
 def test_bootstrap_curriculum_workspace_does_not_create_dirs_from_repository_structure(monkeypatch, tmp_path):
-    prompt_path = tmp_path / "curriculum_generation" / "prompts" / "demo.md"
+    prompt_path = tmp_path / "curriculum" / "prompts" / "demo.md"
     prompt_path.parent.mkdir(parents=True, exist_ok=True)
     prompt_path.write_text("Generate a roadmap.")
 
@@ -128,7 +128,7 @@ inference-server/
 ```
 """
 
-    monkeypatch.setattr("learning_agent.curriculum_bootstrap._initialize_git_repo", lambda _workspace_root: None)
+    monkeypatch.setattr("curriculum.bootstrap._initialize_git_repo", lambda _workspace_root: None)
 
     result = bootstrap_curriculum_workspace(
         repo_root=tmp_path,
@@ -146,7 +146,7 @@ inference-server/
 
 
 def test_curriculum_bootstrap_cli_accepts_output_repo_path(monkeypatch, tmp_path):
-    (tmp_path / "learning_agent.config.json").write_text("{}\n")
+    (tmp_path / "coach.config.json").write_text("{}\n")
     monkeypatch.chdir(tmp_path)
 
     captured = {}
@@ -164,7 +164,7 @@ def test_curriculum_bootstrap_cli_accepts_output_repo_path(monkeypatch, tmp_path
             directories=[],
         )
 
-    monkeypatch.setattr("learning_agent.cli.bootstrap_curriculum_workspace", fake_bootstrap)
+    monkeypatch.setattr("coach.cli.bootstrap_curriculum_workspace", fake_bootstrap)
 
     result = runner.invoke(app, ["curriculum", "bootstrap", "--output-repo-path", "ai_inference_engineering"])
 
@@ -172,4 +172,4 @@ def test_curriculum_bootstrap_cli_accepts_output_repo_path(monkeypatch, tmp_path
     assert "Created workspace:" in result.stdout
     assert captured["repo_root"] == tmp_path
     assert captured["output_repo_path"] == Path("ai_inference_engineering")
-    assert captured["prompt_path"] == tmp_path / "curriculum_generation" / "prompts" / "ai_inference_engineering_8_week_plan.md"
+    assert captured["prompt_path"] == tmp_path / "curriculum" / "prompts" / "ai_inference_engineering_8_week_plan.md"

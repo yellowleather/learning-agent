@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from learning_agent.roadmap_parser import load_roadmap_dict
+from curriculum.parser import load_roadmap_dict
 
 
 def build_week(number: int) -> str:

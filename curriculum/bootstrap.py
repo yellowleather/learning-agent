@@ -8,9 +8,9 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from learning_agent.errors import LearningAgentError
+from coach.errors import CoachError
 
-DEFAULT_CURRICULUM_PROMPT_PATH = "curriculum_generation/prompts/ai_inference_engineering_8_week_plan.md"
+DEFAULT_CURRICULUM_PROMPT_PATH = "curriculum/prompts/ai_inference_engineering_8_week_plan.md"
 DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-1-20250805"
 DEFAULT_PLAN_PATH = "docs/8_week_plan.md"
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
@@ -33,7 +33,7 @@ class AnthropicMessageClient:
     def __init__(self, api_key: str | None = None):
         self.api_key = (api_key or os.environ.get("ANTHROPIC_API_KEY", "")).strip()
         if not self.api_key:
-            raise LearningAgentError(
+            raise CoachError(
                 "ANTHROPIC_API_KEY is not set. Export it or add it to the repo-local .env before running curriculum bootstrap."
             )
 
@@ -66,9 +66,9 @@ class AnthropicMessageClient:
                 body = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-            raise LearningAgentError(f"Anthropic API request failed with HTTP {exc.code}: {detail}") from exc
+            raise CoachError(f"Anthropic API request failed with HTTP {exc.code}: {detail}") from exc
         except urllib.error.URLError as exc:
-            raise LearningAgentError(f"Anthropic API request failed: {exc.reason}") from exc
+            raise CoachError(f"Anthropic API request failed: {exc.reason}") from exc
 
         data = json.loads(body)
         content_blocks = data.get("content", [])
@@ -78,7 +78,7 @@ class AnthropicMessageClient:
                 text_parts.append(block["text"])
         text = "".join(text_parts).strip()
         if not text:
-            raise LearningAgentError("Anthropic API returned an empty response.")
+            raise CoachError("Anthropic API returned an empty response.")
         return text
 
 
@@ -92,7 +92,7 @@ def bootstrap_curriculum_workspace(
 ) -> BootstrappedWorkspace:
     resolved_prompt_path = prompt_path.resolve()
     if not resolved_prompt_path.exists():
-        raise LearningAgentError(f"Prompt asset not found: {resolved_prompt_path}")
+        raise CoachError(f"Prompt asset not found: {resolved_prompt_path}")
 
     workspace_root = output_repo_path.resolve() if output_repo_path.is_absolute() else (repo_root / output_repo_path).resolve()
     _validate_output_repo_path(workspace_root)
@@ -130,7 +130,7 @@ def _validate_output_repo_path(workspace_root: Path) -> None:
     existing_entries = [entry.name for entry in workspace_root.iterdir()]
     non_git_entries = [name for name in existing_entries if name != ".git"]
     if non_git_entries:
-        raise LearningAgentError(f"Output repo path already exists and is not empty: {workspace_root}")
+        raise CoachError(f"Output repo path already exists and is not empty: {workspace_root}")
 
 
 def _write_workspace(
@@ -182,4 +182,4 @@ def _initialize_git_repo(workspace_root: Path) -> None:
             text=True,
         )
     except subprocess.CalledProcessError as exc:
-        raise LearningAgentError(f"Failed to initialize nested git repository at {workspace_root}: {exc.stderr}") from exc
+        raise CoachError(f"Failed to initialize nested git repository at {workspace_root}: {exc.stderr}") from exc
