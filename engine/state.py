@@ -7,8 +7,8 @@ from typing import Iterator, Optional, Type, TypeVar
 from pydantic import BaseModel
 
 from build.models import BuildSession, TranscriptEvent
-from coach.errors import CoachError
-from coach.models import (
+from engine.errors import EngineError
+from engine.models import (
     AppConfig,
     GeneratedTask,
     Ledger,
@@ -67,7 +67,7 @@ class StateStore:
 
     def initialize_ledger(self, metadata, week: dict) -> Ledger:
         if self.ledger_path.exists():
-            raise CoachError(f"Ledger already exists at {self.ledger_path}.")
+            raise EngineError(f"Ledger already exists at {self.ledger_path}.")
         ledger = Ledger(
             curriculum_metadata=metadata,
             state={
@@ -138,7 +138,7 @@ class StateStore:
                 try:
                     payload = json.loads(raw)
                 except json.JSONDecodeError as exc:
-                    raise CoachError(
+                    raise EngineError(
                         f"Transcript line is not valid JSON in {self.build_transcript_path}: {exc}"
                     ) from exc
                 yield TranscriptEvent.model_validate(payload)
@@ -179,9 +179,9 @@ class StateStore:
         try:
             raw = json.loads(path.read_text())
         except FileNotFoundError as exc:
-            raise CoachError(f"Missing state file at {path}.") from exc
+            raise EngineError(f"Missing state file at {path}.") from exc
         except json.JSONDecodeError as exc:
-            raise CoachError(f"State file {path} is not valid JSON: {exc}") from exc
+            raise EngineError(f"State file {path} is not valid JSON: {exc}") from exc
         return model.model_validate(raw)
 
     def _write_json(self, path: Path, payload: dict) -> None:

@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from coach.errors import CoachError
-from coach.models import (
+from engine.errors import EngineError
+from engine.models import (
     CheckpointState,
     Ledger,
 )
@@ -26,7 +26,7 @@ from verify.models import (
 from learn.models import (
     LearningSession,
 )
-from coach.state import StateStore
+from engine.state import StateStore
 
 
 class VerifyStage:
@@ -73,7 +73,7 @@ class VerifyStage:
         verification is always tied back to a concrete build brief."""
         ledger = self.state.load_ledger()
         if not self.state.task_path.exists():
-            raise CoachError("Generate a task before recording verification.")
+            raise EngineError("Generate a task before recording verification.")
         record = VerificationRecord(passed=passed, summary=summary)
         self.state.update_task_verification(record)
         ledger.state.verification = record

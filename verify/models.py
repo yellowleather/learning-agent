@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from coach._base import StrictModel
+from engine._base import StrictModel
 
 
 class VerificationRecord(StrictModel):

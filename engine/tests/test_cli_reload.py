@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from coach.cli import build_reload_command, snapshot_reload_state
+from engine.cli import build_reload_command, snapshot_reload_state
 
 
 def test_build_reload_command_includes_no_reload_flag():

@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import AliasChoices, Field
 
-from coach._base import StrictModel
+from engine._base import StrictModel
 from verify.models import (
     ObservationRecord,
     ReflectionRecord,
@@ -13,7 +13,7 @@ from verify.models import (
 
 
 # StrictModel is re-exported here for any caller that still imports it from
-# coach.models; new code should import directly from coach._base.
+# coach.models; new code should import directly from engine._base.
 __all__ = [
     "StrictModel",
     "ObservationRecord",

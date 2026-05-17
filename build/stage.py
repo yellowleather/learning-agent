@@ -12,10 +12,10 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from curriculum.access import CurriculumAccess
-from coach.errors import CoachError
-from coach.models import CheckpointState, Ledger, TaskSession
-from coach.providers.base import LLMProvider
-from coach.state import StateStore
+from engine.errors import EngineError
+from engine.models import CheckpointState, Ledger, TaskSession
+from engine.providers.base import LLMProvider
+from engine.state import StateStore
 
 
 class BuildStage:
@@ -43,7 +43,7 @@ class BuildStage:
         """
         ledger = self.state.load_ledger()
         if not ledger.state.gates.learning_check_passed:
-            raise CoachError("Cannot generate a task before the learning check passes.")
+            raise EngineError("Cannot generate a task before the learning check passes.")
         week_spec = self.curriculum.current_week(ledger.state.current_week)
         provider = self.provider_factory()
         task = provider.generate_task(week_spec, ledger.state)

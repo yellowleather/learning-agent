@@ -19,11 +19,11 @@ build/
 └── tests/               # stage tests + persistence tests
 ```
 
-## What lives here vs in coach/
+## What lives here vs in engine/
 
-The split between this package and `coach/` follows one rule: anything that
+The split between this package and `engine/` follows one rule: anything that
 is *specific to the Build step* lives in `build/`; the cross-stage workflow
-scaffolding lives in `coach/`.
+scaffolding lives in `engine/`.
 
 Concretely:
 
@@ -37,10 +37,10 @@ Concretely:
   the call that loads it stay in one package.
 - The persistence *paths* (`state/current_build.json`,
   `state/current_build.transcript.jsonl`) and the archive lifecycle stay in
-  `coach.state.StateStore` because they're part of the cross-stage state
+  `engine.state.StateStore` because they're part of the cross-stage state
   surface — `archive_week_state` moves all four ephemeral files (learning,
   task, build, transcript) at once and shouldn't fragment across packages.
-- `GeneratedTask` and `TaskSession` stay in `coach.models` — they predate
+- `GeneratedTask` and `TaskSession` stay in `engine.models` — they predate
   the agent work and are also consumed by `VerifyStage` (which writes a
   verification record into the task session).
 

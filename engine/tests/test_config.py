@@ -1,7 +1,7 @@
 import json
 import os
 
-from coach.config import load_config
+from engine.config import load_config
 
 
 def test_load_config_reads_repo_dotenv(monkeypatch, tmp_path):

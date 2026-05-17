@@ -17,11 +17,11 @@ import re
 from collections.abc import Iterator
 from typing import Any, Callable
 
-from coach.errors import CoachError
-from coach.models import Ledger
+from engine.errors import EngineError
+from engine.models import Ledger
 from topic_chat.models import TopicChatTurn
 from learn.models import LearningSession
-from coach.providers.base import LLMProvider
+from engine.providers.base import LLMProvider
 
 
 VALID_STEPS = {"learn", "build", "verify", "approve"}
@@ -61,11 +61,11 @@ class TopicChat:
         for resolving the default step + blockers + progress before calling.
         """
         if not message.strip():
-            raise CoachError("Topic chat message cannot be empty.")
+            raise EngineError("Topic chat message cannot be empty.")
 
         step_id = current_step.strip().lower() or default_step_fallback
         if step_id not in VALID_STEPS:
-            raise CoachError(f"Unknown workflow step: {current_step}")
+            raise EngineError(f"Unknown workflow step: {current_step}")
 
         history_turns = [
             turn if isinstance(turn, TopicChatTurn) else TopicChatTurn.model_validate(turn)
@@ -148,9 +148,9 @@ class TopicChat:
                 error_message = str(event.get("error") or "Topic chat request failed.")
 
         if error_message:
-            raise CoachError(error_message)
+            raise EngineError(error_message)
         if done_event is None:
-            raise CoachError("Topic chat stream ended before a final reply was produced.")
+            raise EngineError("Topic chat stream ended before a final reply was produced.")
         return {
             "reply": str(done_event.get("reply") or ""),
             "week": done_event.get("week"),
@@ -163,7 +163,7 @@ class TopicChat:
         """Strip JSON wrappers some providers wrap chat replies in."""
         text = str(reply or "").strip()
         if not text:
-            raise CoachError("Topic chat returned an empty reply.")
+            raise EngineError("Topic chat returned an empty reply.")
 
         parsed = self._parse_json(text)
         if parsed is None:

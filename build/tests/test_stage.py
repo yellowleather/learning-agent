@@ -10,10 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from coach.config import AppConfig
+from engine.config import AppConfig
 from curriculum.access import CurriculumAccess
-from coach.errors import CoachError
-from coach.models import (
+from engine.errors import EngineError
+from engine.models import (
     ArtifactState,
     Gates,
     GeneratedTask,
@@ -25,7 +25,7 @@ from verify.models import (
     VerificationRecord,
 )
 from build.stage import BuildStage
-from coach.state import StateStore
+from engine.state import StateStore
 
 
 class _StubProvider:
@@ -109,7 +109,7 @@ def test_generate_task_blocked_until_learning_check_passes(tmp_path: Path) -> No
     # Generating the brief before the learning gate passes is a precondition
     # error — it would break the pedagogical ordering.
     stage = _make_stage(tmp_path, learning_passed=False)
-    with pytest.raises(CoachError) as excinfo:
+    with pytest.raises(EngineError) as excinfo:
         stage.generate_task()
     assert "learning check passes" in str(excinfo.value)
 

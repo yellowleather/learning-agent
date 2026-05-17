@@ -20,12 +20,14 @@ dev = [
 ]
 
 [project.scripts]
-coach = "coach.cli:app"
+# The CLI binary is `coach` — the product brand. It dispatches into the
+# engine package, which is the orchestration kernel.
+coach = "engine.cli:app"
 
 [tool.setuptools]
 packages = [
-  "coach",
-  "coach.providers",
+  "engine",
+  "engine.providers",
   "curriculum",
   "build",
   "learn",
@@ -35,7 +37,7 @@ packages = [
 ]
 
 [tool.setuptools.package-data]
-coach = ["prompts/*.md"]
+engine = ["prompts/*.md"]
 curriculum = ["prompts/*.md"]
 build = ["prompts/*.md"]
 learn = ["prompts/*.md"]
@@ -45,8 +47,8 @@ ui = ["assets/*.png", "assets/illustrations/*.svg"]
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = [
-  "coach/tests",
-  "coach/providers/tests",
+  "engine/tests",
+  "engine/providers/tests",
   "curriculum/tests",
   "build/tests",
   "learn/tests",

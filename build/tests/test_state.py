@@ -20,8 +20,8 @@ from build.models import (
     FileTouched,
     TranscriptEvent,
 )
-from coach.config import AppConfig
-from coach.state import StateStore
+from engine.config import AppConfig
+from engine.state import StateStore
 
 
 def _make_store(tmp_path: Path) -> StateStore:
@@ -126,7 +126,7 @@ def test_save_and_load_build_session_round_trips(tmp_path: Path) -> None:
 
 
 def test_load_build_session_missing_file_raises(tmp_path: Path) -> None:
-    # Loading when no build has been started must surface a CoachError so UI
+    # Loading when no build has been started must surface a EngineError so UI
     # callers can present a clear "no run in progress" state rather than crash.
     store = _make_store(tmp_path)
     with pytest.raises(Exception):

@@ -25,11 +25,11 @@ learn/
 └── tests/               # stage tests
 ```
 
-## What lives here vs in coach/
+## What lives here vs in engine/
 
 The same rule as build/ and curriculum/: anything specific to the **Learn**
 step lives in this package. Cross-stage workflow scaffolding stays in
-`coach/`.
+`engine/`.
 
 Concretely in this package:
 
@@ -44,7 +44,7 @@ Concretely in this package:
   `generate_reading_material`, `generate_concept_cards_from_reading`,
   `score_learning_question`) import `render_prompt` from `learn.prompts`.
 
-What stays in `coach/`:
+What stays in `engine/`:
 
 - The persistence paths for `current_learning.json` and the
   `archive_week_state` lifecycle (cross-stage state surface).
@@ -65,7 +65,7 @@ What stays in `coach/`:
 4. `generate_concept_cards_from_reading` — distils the reading into 3+
    normalised concept cards (ids deduped, fields stripped).
 
-Each step's output is validated; a failure raises `CoachError` rather than
+Each step's output is validated; a failure raises `EngineError` rather than
 persisting half-baked content.
 
 `LearnStage.answer_question(qid, answer)` scores a single answer through

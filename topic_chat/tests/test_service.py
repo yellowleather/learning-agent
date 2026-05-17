@@ -9,8 +9,8 @@ from collections.abc import Iterator
 
 import pytest
 
-from coach.errors import CoachError
-from coach.models import (
+from engine.errors import EngineError
+from engine.models import (
     ArtifactState,
     Gates,
     Ledger,
@@ -99,7 +99,7 @@ def _facts() -> dict:
 def test_empty_message_is_rejected() -> None:
     # Empty / whitespace messages must not reach the provider.
     chat = TopicChat(provider_factory=lambda: _RecordingProvider("ignored"))
-    with pytest.raises(CoachError):
+    with pytest.raises(EngineError):
         list(
             chat.stream(
                 ledger=_empty_ledger(),
@@ -116,7 +116,7 @@ def test_empty_message_is_rejected() -> None:
 def test_unknown_step_is_rejected() -> None:
     # Only the four canonical workflow steps are valid.
     chat = TopicChat(provider_factory=lambda: _RecordingProvider("ignored"))
-    with pytest.raises(CoachError) as excinfo:
+    with pytest.raises(EngineError) as excinfo:
         list(
             chat.stream(
                 ledger=_empty_ledger(),
@@ -231,7 +231,7 @@ def test_empty_provider_reply_raises() -> None:
     # An empty reply from the provider is a defect we must surface, not hide.
     provider = _RecordingProvider("")
     chat = TopicChat(provider_factory=lambda: provider)
-    with pytest.raises(CoachError):
+    with pytest.raises(EngineError):
         chat.answer(
             ledger=_empty_ledger(),
             week_spec=_week_spec(),

@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from curriculum.access import CurriculumAccess
-from coach.errors import CoachError
-from coach.models import (
+from engine.errors import EngineError
+from engine.models import (
     CheckpointState,
     Ledger,
 )
@@ -33,8 +33,8 @@ from learn.models import (
     QuestionAttempt,
     ReadingMaterialPayload,
 )
-from coach.providers.base import LLMProvider
-from coach.state import StateStore
+from engine.providers.base import LLMProvider
+from engine.state import StateStore
 
 
 class LearnStage:
@@ -279,7 +279,7 @@ class LearnStage:
         questions = question_payload.questions
         question_errors = self._validate_questions(questions)
         if question_errors:
-            raise CoachError(
+            raise EngineError(
                 "Learning Assist question bank failed validation: " + "; ".join(question_errors)
             )
 
@@ -291,7 +291,7 @@ class LearnStage:
         reading_material = self._normalize_reading_material(reading_payload)
         reading_errors = self._validate_reading_material(reading_material)
         if reading_errors:
-            raise CoachError(
+            raise EngineError(
                 "Learning Assist reading generation failed validation: " + "; ".join(reading_errors)
             )
 
@@ -301,7 +301,7 @@ class LearnStage:
         concept_cards = self._normalize_concept_cards(concept_payload.concept_cards)
         concept_errors = self._validate_concept_cards(concept_cards)
         if concept_errors:
-            raise CoachError(
+            raise EngineError(
                 "Learning Assist concept-card generation failed validation: " + "; ".join(concept_errors)
             )
 
@@ -557,7 +557,7 @@ class LearnStage:
         for question in session.questions:
             if question.id == question_id:
                 return question
-        raise CoachError(
+        raise EngineError(
             f"Question `{question_id}` does not exist in the current learning session."
         )
 

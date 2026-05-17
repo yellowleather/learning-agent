@@ -2,7 +2,7 @@
 
 `coach` is a curriculum-paced learning workspace for senior engineers. It runs a structured Learn → Build → Verify → Approve loop against a separate target repository, exposing only the currently unlocked week and blocking progression until each week's gates are satisfied.
 
-The platform is structured as a stage-driven workflow rather than a multi-agent system. Each step is its own top-level package: `learn/`, `build/`, `verify/`. The `coach/` package holds only the cross-stage scaffolding — orchestrator, ledger, state, topic chat, providers, CLI, and UI. Curriculum reads and bootstrapping live in their own `curriculum/` package.
+The platform is structured as a stage-driven workflow rather than a multi-agent system. Each step is its own top-level package: `learn/`, `build/`, `verify/`. The `engine/` package holds the cross-stage scaffolding — orchestrator, ledger, state, providers, CLI, config. The web UI, chat service, and curriculum each live in their own top-level packages (`ui/`, `topic_chat/`, `curriculum/`). The CLI binary that users run is still called `coach` — `coach` is the product brand, `engine/` is the orchestration kernel.
 
 ## What It Does
 
@@ -18,16 +18,16 @@ The platform is structured as a stage-driven workflow rather than a multi-agent 
 
 ```text
 .
-├── coach/                     # Cross-stage scaffolding only
+├── engine/                    # Orchestration kernel (cross-stage scaffolding)
 │   ├── orchestrator.py        # WeekOrchestrator (status, gates, week transitions)
 │   ├── providers/             # LLM provider abstraction + concrete adapters
 │   ├── prompts/               # Cross-stage prompts (mentor.md, junior.md)
-│   ├── cli.py                 # Typer CLI
+│   ├── cli.py                 # Typer CLI (the `coach` binary dispatches here)
 │   ├── models.py              # Cross-stage models (Ledger, Gates, TaskSession, …)
 │   ├── _base.py               # Shared StrictModel base class
 │   ├── state.py               # Persistent + ephemeral state storage
 │   ├── config.py              # Config + repo-root discovery
-│   ├── errors.py              # CoachError
+│   ├── errors.py              # EngineError
 │   └── tests/                 # Orchestrator / CLI / config tests
 ├── topic_chat/                # Week-scoped chat service (used from any stage)
 │   ├── service.py             # TopicChat class
@@ -66,7 +66,7 @@ The platform is structured as a stage-driven workflow rather than a multi-agent 
 └── pyproject.toml
 ```
 
-Tests live next to the code they cover (`coach/tests/`, `coach/providers/tests/`, `learn/tests/`, `build/tests/`, `verify/tests/`, `curriculum/tests/`).
+Tests live next to the code they cover (`engine/tests/`, `engine/providers/tests/`, `learn/tests/`, `build/tests/`, `verify/tests/`, `ui/tests/`, `topic_chat/tests/`, `curriculum/tests/`).
 
 ## Requirements
 

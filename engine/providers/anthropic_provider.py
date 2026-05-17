@@ -6,9 +6,9 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from coach.errors import CoachError
+from engine.errors import EngineError
 from topic_chat.models import TopicChatTurn
-from coach.providers.openai_provider import OpenAIProvider, ResponseModelT
+from engine.providers.openai_provider import OpenAIProvider, ResponseModelT
 
 
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
@@ -55,7 +55,7 @@ class AnthropicProvider(OpenAIProvider):
             max_tokens=DEFAULT_TOPIC_CHAT_MAX_TOKENS,
         )
         if not text.strip():
-            raise CoachError("Anthropic provider returned an empty topic chat response.")
+            raise EngineError("Anthropic provider returned an empty topic chat response.")
         return text.strip()
 
     def stream_topic_chat(
@@ -83,7 +83,7 @@ class AnthropicProvider(OpenAIProvider):
         )
         text = self._response_text(response)
         if not text.strip():
-            raise CoachError("Anthropic provider returned an empty response.")
+            raise EngineError("Anthropic provider returned an empty response.")
         return text.strip()
 
     def _messages_create(
@@ -95,10 +95,10 @@ class AnthropicProvider(OpenAIProvider):
         max_tokens: int,
     ) -> dict[str, Any]:
         if not self.model:
-            raise CoachError("Config field `model` must be set before using the Anthropic provider.")
+            raise EngineError("Config field `model` must be set before using the Anthropic provider.")
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
-            raise CoachError("ANTHROPIC_API_KEY must be set before using the Anthropic provider.")
+            raise EngineError("ANTHROPIC_API_KEY must be set before using the Anthropic provider.")
 
         payload = {
             "model": self.model,
@@ -124,12 +124,12 @@ class AnthropicProvider(OpenAIProvider):
             detail = exc.read().decode("utf-8", errors="replace")
             raise self._translate_http_error(exc.code, detail) from exc
         except urllib.error.URLError as exc:
-            raise CoachError("Anthropic connection failed. Check network access and API configuration.") from exc
+            raise EngineError("Anthropic connection failed. Check network access and API configuration.") from exc
 
         try:
             return json.loads(body)
         except json.JSONDecodeError as exc:
-            raise CoachError(f"Anthropic response was not valid JSON: {exc}") from exc
+            raise EngineError(f"Anthropic response was not valid JSON: {exc}") from exc
 
     def _response_text(self, response: dict[str, Any]) -> str:
         content_blocks = response.get("content", [])
@@ -139,13 +139,13 @@ class AnthropicProvider(OpenAIProvider):
                 pieces.append(block["text"])
         return "".join(pieces)
 
-    def _translate_http_error(self, status_code: int, detail: str) -> CoachError:
+    def _translate_http_error(self, status_code: int, detail: str) -> EngineError:
         if status_code in {401, 403}:
-            return CoachError("Anthropic authentication failed. Check ANTHROPIC_API_KEY.")
+            return EngineError("Anthropic authentication failed. Check ANTHROPIC_API_KEY.")
         if status_code == 408:
-            return CoachError("Anthropic request timed out. Try again.")
+            return EngineError("Anthropic request timed out. Try again.")
         if status_code == 429:
-            return CoachError("Anthropic rate limit hit. Try again shortly.")
+            return EngineError("Anthropic rate limit hit. Try again shortly.")
         if detail:
-            return CoachError(f"Anthropic request failed with HTTP {status_code}: {detail}")
-        return CoachError(f"Anthropic request failed with HTTP {status_code}.")
+            return EngineError(f"Anthropic request failed with HTTP {status_code}: {detail}")
+        return EngineError(f"Anthropic request failed with HTTP {status_code}.")

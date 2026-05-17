@@ -10,17 +10,17 @@ from typing import Optional
 
 import typer
 
-from coach.config import load_config, load_dotenv, locate_repo_root
-from coach.orchestrator import WeekOrchestrator
+from engine.config import load_config, load_dotenv, locate_repo_root
+from engine.orchestrator import WeekOrchestrator
 from curriculum.bootstrap import (
     DEFAULT_ANTHROPIC_MODEL,
     DEFAULT_CURRICULUM_PROMPT_PATH,
     bootstrap_curriculum_workspace,
 )
-from coach.errors import CoachError
+from engine.errors import EngineError
 from verify.models import ObservationRecord, ReflectionRecord
-from coach.providers.anthropic_provider import AnthropicProvider
-from coach.providers.openai_provider import OpenAIProvider
+from engine.providers.anthropic_provider import AnthropicProvider
+from engine.providers.openai_provider import OpenAIProvider
 from ui.server import DEFAULT_UI_HOST, DEFAULT_UI_PORT, serve_ui
 
 
@@ -37,7 +37,7 @@ app.add_typer(curriculum_app, name="curriculum")
 
 RELOAD_POLL_INTERVAL_SECONDS = 0.75
 RELOAD_WATCH_TARGETS = (
-    "coach",
+    "engine",
     "ui",
     "learn",
     "build",
@@ -55,7 +55,7 @@ def get_controller() -> WeekOrchestrator:
     return WeekOrchestrator(repo_root, config)
 
 
-def exit_on_error(exc: CoachError) -> None:
+def exit_on_error(exc: EngineError) -> None:
     typer.secho(str(exc), fg=typer.colors.RED, err=True)
     raise typer.Exit(code=1)
 
@@ -87,7 +87,7 @@ def build_reload_command(host: str, port: int) -> list[str]:
     return [
         sys.executable,
         "-m",
-        "coach",
+        "engine",
         "serve",
         "--host",
         host,
@@ -141,7 +141,7 @@ def init_command() -> None:
         controller = get_controller()
         ledger = controller.initialize()
         typer.echo(f"Initialized Week {ledger.state.current_week} in {controller.state.ledger_path}.")
-    except CoachError as exc:
+    except EngineError as exc:
         exit_on_error(exc)
 
 
@@ -177,7 +177,7 @@ def curriculum_bootstrap_command(
         typer.echo(f"Plan: {result.plan_path}")
         typer.echo(f"Prompt: {result.prompt_path}")
         typer.echo(f"Model: {result.model}")
-    except CoachError as exc:
+    except EngineError as exc:
         exit_on_error(exc)
 
 
@@ -214,7 +214,7 @@ def status_command() -> None:
                 typer.echo(f"- {checkpoint['title']}: {checkpoint['status']} ({checkpoint['reason']})")
         if status["approval_blockers"]:
             typer.echo(f"Approval blockers: {'; '.join(status['approval_blockers'])}")
-    except CoachError as exc:
+    except EngineError as exc:
         exit_on_error(exc)
 
 
@@ -231,7 +231,7 @@ def learn_generate_command() -> None:
                 f"- {question.id} [{question.depth}] "
                 f"{question.prompt_text}"
             )
-    except CoachError as exc:
+    except EngineError as exc:
         exit_on_error(exc)
 
 
@@ -279,7 +279,7 @@ def learn_compare_models_command(
             )
             if provider_result.get("error"):
                 typer.echo(f"  error: {provider_result['error']}")
-    except CoachError as exc:
+    except EngineError as exc:
         exit_on_error(exc)
 
 
@@ -295,7 +295,7 @@ def learn_answer_command(
         typer.echo(result.score_rationale)
         if result.missing_concepts:
             typer.echo(f"Missing concepts: {', '.join(result.missing_concepts)}")
-    except CoachError as exc:
+    except EngineError as exc:
         exit_on_error(exc)
 
 
@@ -306,7 +306,7 @@ def task_generate_command() -> None:
         task_session = controller.build.generate_task()
         typer.echo(task_session.task.summary)
         typer.echo(json.dumps(task_session.task.model_dump(mode="json"), indent=2, sort_keys=True))
-    except CoachError as exc:
+    except EngineError as exc:
         exit_on_error(exc)
 
 
@@ -318,7 +318,7 @@ def record_sync_command() -> None:
         typer.echo(
             f"Completed {len(ledger.state.artifacts.completed_files)}/{len(ledger.state.artifacts.required_files)} required files."
         )
-    except CoachError as exc:
+    except EngineError as exc:
         exit_on_error(exc)
 
 
@@ -331,7 +331,7 @@ def record_metric_command(
         controller = get_controller()
         ledger = controller.verify.record_metric(key, value)
         typer.echo(f"Recorded metric {key}={ledger.state.metrics.recorded[key]}.")
-    except CoachError as exc:
+    except EngineError as exc:
         exit_on_error(exc)
 
 
@@ -344,7 +344,7 @@ def record_verify_command(
         controller = get_controller()
         ledger = controller.verify.record_verification(passed, summary)
         typer.echo(f"Verification recorded: {'passed' if ledger.state.gates.verification_passed else 'failed'}.")
-    except CoachError as exc:
+    except EngineError as exc:
         exit_on_error(exc)
 
 
@@ -379,7 +379,7 @@ def record_observation_command(
             "Observation recorded. "
             f"Evidence reliability is {'valid' if ledger.state.gates.evidence_reliable else 'blocked'}."
         )
-    except CoachError as exc:
+    except EngineError as exc:
         exit_on_error(exc)
 
 
@@ -399,7 +399,7 @@ def record_reflection_command(
         reflection = ReflectionRecord(text=text, trustworthy=trustworthy, buggy=buggy, next_fix=next_fix)
         controller.verify.record_reflection(reflection)
         typer.echo("Reflection recorded.")
-    except CoachError as exc:
+    except EngineError as exc:
         exit_on_error(exc)
 
 
@@ -409,7 +409,7 @@ def approve_command() -> None:
         controller = get_controller()
         ledger = controller.approve_week()
         typer.echo(f"Week {ledger.state.current_week} approved.")
-    except CoachError as exc:
+    except EngineError as exc:
         exit_on_error(exc)
 
 
@@ -419,7 +419,7 @@ def advance_command() -> None:
         controller = get_controller()
         ledger = controller.advance_week()
         typer.echo(f"Advanced to Week {ledger.state.current_week}.")
-    except CoachError as exc:
+    except EngineError as exc:
         exit_on_error(exc)
 
 
@@ -435,5 +435,5 @@ def serve_command(
             serve_with_reload(repo_root, host=host, port=port)
         else:
             serve_ui(host=host, port=port)
-    except CoachError as exc:
+    except EngineError as exc:
         exit_on_error(exc)

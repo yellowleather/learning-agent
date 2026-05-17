@@ -2,7 +2,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from coach.cli import app
+from engine.cli import app
 from curriculum.bootstrap import BootstrappedWorkspace, bootstrap_curriculum_workspace
 
 
@@ -164,7 +164,7 @@ def test_curriculum_bootstrap_cli_accepts_output_repo_path(monkeypatch, tmp_path
             directories=[],
         )
 
-    monkeypatch.setattr("coach.cli.bootstrap_curriculum_workspace", fake_bootstrap)
+    monkeypatch.setattr("engine.cli.bootstrap_curriculum_workspace", fake_bootstrap)
 
     result = runner.invoke(app, ["curriculum", "bootstrap", "--output-repo-path", "ai_inference_engineering"])
 

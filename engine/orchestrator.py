@@ -4,10 +4,10 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Dict
 
-from coach.config import resolve_repo_path
+from engine.config import resolve_repo_path
 from curriculum.access import CurriculumAccess
-from coach.errors import CoachError
-from coach.models import (
+from engine.errors import EngineError
+from engine.models import (
     AppConfig,
     CheckpointState,
     CurriculumMetadata,
@@ -21,12 +21,12 @@ from verify.models import (
 from learn.models import (
     LearningSession,
 )
-from coach.providers.base import LLMProvider
-from coach.providers.factory import get_provider
+from engine.providers.base import LLMProvider
+from engine.providers.factory import get_provider
 from build.stage import BuildStage
 from learn.stage import LearnStage
 from verify.stage import VerifyStage
-from coach.state import StateStore
+from engine.state import StateStore
 from topic_chat.service import TopicChat
 
 
@@ -101,7 +101,7 @@ class WeekOrchestrator:
         blockers = self._approval_blockers(ledger)
         if blockers:
             joined = "; ".join(blockers)
-            raise CoachError(f"Week cannot be approved yet: {joined}.")
+            raise EngineError(f"Week cannot be approved yet: {joined}.")
         ledger.state.gates.week_approved = True
         self.state.save_ledger(ledger)
         return ledger
@@ -109,7 +109,7 @@ class WeekOrchestrator:
     def advance_week(self) -> Ledger:
         ledger = self.state.load_ledger()
         if not ledger.state.gates.week_approved:
-            raise CoachError("Approve the current week before advancing.")
+            raise EngineError("Approve the current week before advancing.")
         outgoing_week = ledger.state.current_week
         metadata = self.curriculum.metadata()
         next_week = self.curriculum.week_by_number(outgoing_week + 1)

@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
-from coach.cli import app
+from engine.cli import app
 from learn.models import (
     ConceptCardPayload,
     LearningQuestionBankPayload,
@@ -302,7 +302,7 @@ You can ship the system.
     (tmp_path / "coach.config.json").write_text(json.dumps(config))
     (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: FakeProvider())
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: FakeProvider())
 
     init_result = runner.invoke(app, ["init"])
     assert init_result.exit_code == 0
@@ -398,7 +398,7 @@ You can ship the system.
     (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
     (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: FakeProvider())
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: FakeProvider())
 
     assert runner.invoke(app, ["init"]).exit_code == 0
 
@@ -441,7 +441,7 @@ def test_learn_compare_models_writes_comparison_outputs(monkeypatch, tmp_path):
             self.config = SimpleNamespace(provider="openai", model="gpt-4o")
             self.learn = FakeLearn()
 
-    monkeypatch.setattr("coach.cli.get_controller", lambda: FakeController())
+    monkeypatch.setattr("engine.cli.get_controller", lambda: FakeController())
 
     result = runner.invoke(app, ["learn", "compare-models", "--claude-model", "claude-test"])
 

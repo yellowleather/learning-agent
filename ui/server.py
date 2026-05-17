@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import parse_qs, quote_plus, urlparse
 
-from coach.config import load_config
-from coach.orchestrator import WeekOrchestrator
-from coach.errors import CoachError
+from engine.config import load_config
+from engine.orchestrator import WeekOrchestrator
+from engine.errors import EngineError
 from verify.models import ObservationRecord, ReflectionRecord
 
 
@@ -106,7 +106,7 @@ def build_handler():
                 else:
                     message = run_action(action, form)
                     self._redirect(message=message, query={"question_id": question_id})
-            except CoachError as exc:
+            except EngineError as exc:
                 if action == "learning_answer":
                     self._redirect(
                         query={
@@ -220,9 +220,9 @@ def submit_learning_answer(form: Dict[str, list[str]]) -> Any:
     question_id = first_param(form, "question_id").strip()
     answer = first_param(form, "learning_answer").strip()
     if not question_id:
-        raise CoachError("Question id cannot be empty.")
+        raise EngineError("Question id cannot be empty.")
     if not answer:
-        raise CoachError("Learning answer cannot be empty.")
+        raise EngineError("Learning answer cannot be empty.")
     return controller.learn.answer_question(question_id, answer)
 
 
@@ -232,7 +232,7 @@ def learning_answer_feedback_message(result: Any) -> str:
 
 def run_action(action: str, form: Dict[str, list[str]]) -> str:
     if not action:
-        raise CoachError("Missing action.")
+        raise EngineError("Missing action.")
 
     controller = get_controller()
     if action == "init":
@@ -256,13 +256,13 @@ def run_action(action: str, form: Dict[str, list[str]]) -> str:
         key = first_param(form, "metric_key").strip()
         value = first_param(form, "metric_value").strip()
         if not key:
-            raise CoachError("Metric key cannot be empty.")
+            raise EngineError("Metric key cannot be empty.")
         if not value:
-            raise CoachError("Metric value cannot be empty.")
+            raise EngineError("Metric value cannot be empty.")
         try:
             parsed_value = float(value)
         except ValueError as exc:
-            raise CoachError("Metric value must be numeric.") from exc
+            raise EngineError("Metric value must be numeric.") from exc
         controller.verify.record_metric(key, parsed_value)
         return f"Recorded metric {key}={parsed_value}."
     if action == "record_observation":
@@ -270,9 +270,9 @@ def run_action(action: str, form: Dict[str, list[str]]) -> str:
         artifact_path = first_param(form, "observation_artifact_path").strip()
         reliability = first_param(form, "observation_reliability", default="uncertain").strip() or "uncertain"
         if not command:
-            raise CoachError("Observation command cannot be empty.")
+            raise EngineError("Observation command cannot be empty.")
         if not artifact_path:
-            raise CoachError("Observation artifact path cannot be empty.")
+            raise EngineError("Observation artifact path cannot be empty.")
         observation = ObservationRecord(
             command=command,
             artifact_path=artifact_path,
@@ -289,13 +289,13 @@ def run_action(action: str, form: Dict[str, list[str]]) -> str:
         summary = first_param(form, "verification_summary").strip()
         passed = first_param(form, "verification_passed", default="true") == "true"
         if not summary:
-            raise CoachError("Verification summary cannot be empty.")
+            raise EngineError("Verification summary cannot be empty.")
         controller.verify.record_verification(passed, summary)
         return "Recorded verification result."
     if action == "record_reflection":
         text = first_param(form, "reflection_text").strip()
         if not text:
-            raise CoachError("Reflection text cannot be empty.")
+            raise EngineError("Reflection text cannot be empty.")
         trustworthy = parse_optional_bool(first_param(form, "reflection_trustworthy"))
         buggy = first_param(form, "reflection_buggy", default="false") == "true"
         next_fix = first_param(form, "reflection_next_fix").strip()
@@ -310,17 +310,17 @@ def run_action(action: str, form: Dict[str, list[str]]) -> str:
         ledger = controller.advance_week()
         return f"Advanced to Week {ledger.state.current_week}."
 
-    raise CoachError(f"Unknown action: {action}")
+    raise EngineError(f"Unknown action: {action}")
 
 
 def run_topic_chat_stream(payload: dict[str, Any]) -> Iterator[dict[str, Any]]:
     try:
         if not isinstance(payload, dict):
-            raise CoachError("Topic chat request must be a JSON object.")
+            raise EngineError("Topic chat request must be a JSON object.")
 
         history = payload.get("history") or []
         if not isinstance(history, list):
-            raise CoachError("Topic chat history must be a list.")
+            raise EngineError("Topic chat history must be a list.")
 
         current_step = str(payload.get("current_step") or "").strip()
         selected_question_id = str(payload.get("selected_question_id") or "").strip() or None
@@ -333,7 +333,7 @@ def run_topic_chat_stream(payload: dict[str, Any]) -> Iterator[dict[str, Any]]:
             selected_question_id=selected_question_id,
             selection_context=selection_context,
         )
-    except CoachError as exc:
+    except EngineError as exc:
         yield {"type": "error", "error": str(exc)}
     except Exception as exc:  # pragma: no cover
         yield {"type": "error", "error": f"Unexpected error: {exc}"}
@@ -344,12 +344,12 @@ def run_topic_chat(payload: dict[str, Any]) -> dict[str, Any]:
     for event in run_topic_chat_stream(payload):
         event_type = str(event.get("type") or "")
         if event_type == "error":
-            raise CoachError(str(event.get("error") or "Topic chat request failed."))
+            raise EngineError(str(event.get("error") or "Topic chat request failed."))
         if event_type == "done":
             done_event = event
 
     if done_event is None:
-        raise CoachError("Topic chat stream ended before a final reply was produced.")
+        raise EngineError("Topic chat stream ended before a final reply was produced.")
     return {
         "reply": str(done_event.get("reply") or ""),
         "week": done_event.get("week"),
@@ -369,7 +369,7 @@ def render_page(
     try:
         status = get_controller().status()
         initialized = True
-    except CoachError as exc:
+    except EngineError as exc:
         initialized = False
         status = None
         if not error:
@@ -4026,7 +4026,7 @@ def marathon_total_weeks(status: Optional[dict], course_total_weeks: Optional[in
 def resolve_course_total_weeks() -> int:
     try:
         return max(1, int(get_controller().curriculum_metadata().total_weeks))
-    except CoachError:
+    except EngineError:
         return DEFAULT_COURSE_WEEKS
 
 
@@ -8011,7 +8011,7 @@ def parse_optional_float(value: str) -> float | None:
     try:
         return float(stripped)
     except ValueError as exc:
-        raise CoachError("Expected a numeric value.") from exc
+        raise EngineError("Expected a numeric value.") from exc
 
 
 def parse_optional_int(value: str) -> int | None:
@@ -8021,7 +8021,7 @@ def parse_optional_int(value: str) -> int | None:
     try:
         return int(stripped)
     except ValueError as exc:
-        raise CoachError("Expected an integer value.") from exc
+        raise EngineError("Expected an integer value.") from exc
 
 
 def parse_optional_bool(value: str) -> bool | None:
@@ -8032,7 +8032,7 @@ def parse_optional_bool(value: str) -> bool | None:
         return True
     if stripped == "false":
         return False
-    raise CoachError("Expected a boolean value.")
+    raise EngineError("Expected a boolean value.")
 
 
 def escape(value: str) -> str:

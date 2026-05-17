@@ -3,8 +3,8 @@ from types import SimpleNamespace
 import httpx
 import openai
 
-from coach.errors import CoachError
-from coach.models import (
+from engine.errors import EngineError
+from engine.models import (
     ProgressState,
 )
 from topic_chat.models import TopicChatTurn
@@ -18,7 +18,7 @@ from learn.models import (
     QuestionScore,
     ReadingMaterialPayload,
 )
-from coach.providers.openai_provider import OpenAIProvider
+from engine.providers.openai_provider import OpenAIProvider
 
 
 def _week_spec() -> dict:
@@ -383,7 +383,7 @@ def test_stream_topic_chat_surfaces_connection_errors_clearly(monkeypatch):
                 message="hello",
             )
         )
-    except CoachError as exc:
+    except EngineError as exc:
         assert str(exc) == "OpenAI connection failed. Check network access and API configuration."
     else:  # pragma: no cover
-        raise AssertionError("Expected connection failure to raise CoachError.")
+        raise AssertionError("Expected connection failure to raise EngineError.")

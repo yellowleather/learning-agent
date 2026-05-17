@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from curriculum.access import CurriculumAccess
-from coach.errors import CoachError
+from engine.errors import EngineError
 
 
 def _week_block(number: int, short_title: str, file_path: str) -> str:
@@ -114,10 +114,10 @@ def test_markdown_returns_raw_file_contents(tmp_path: Path) -> None:
 
 
 def test_markdown_raises_coach_error_when_file_missing(tmp_path: Path) -> None:
-    # A missing roadmap file surfaces as a CoachError, not a raw OSError,
+    # A missing roadmap file surfaces as a EngineError, not a raw OSError,
     # so callers can present it without leaking the exception type.
     access = CurriculumAccess(tmp_path / "does_not_exist.md", target_repo_path="target/repo")
-    with pytest.raises(CoachError):
+    with pytest.raises(EngineError):
         access.markdown()
 
 
@@ -142,11 +142,11 @@ def test_week_by_number_returns_matching_week_spec(tmp_path: Path) -> None:
 
 
 def test_week_by_number_raises_when_week_is_absent(tmp_path: Path) -> None:
-    # Unknown week numbers raise a CoachError with a useful message
+    # Unknown week numbers raise a EngineError with a useful message
     # so the orchestrator can surface the boundary instead of indexing into None.
     path = _write_roadmap(tmp_path)
     access = CurriculumAccess(path, target_repo_path="target/repo")
-    with pytest.raises(CoachError) as excinfo:
+    with pytest.raises(EngineError) as excinfo:
         access.week_by_number(99)
     assert "Week 99" in str(excinfo.value)
 

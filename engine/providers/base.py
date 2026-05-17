@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from typing import Any
 
-from coach.models import (
+from engine.models import (
     GeneratedTask,
     ProgressState,
 )

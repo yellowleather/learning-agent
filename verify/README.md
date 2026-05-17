@@ -15,10 +15,10 @@ verify/
 └── tests/          # stage tests
 ```
 
-## What lives here vs in coach/
+## What lives here vs in engine/
 
 Same rule as build/ and learn/: anything specific to the Verify step lives
-here; cross-stage workflow scaffolding stays in coach/.
+here; cross-stage workflow scaffolding stays in engine/.
 
 Concretely in this package:
 
@@ -27,15 +27,15 @@ Concretely in this package:
 - The three evidence-shaped models — `VerificationRecord`,
   `ObservationRecord`, `ReflectionRecord`.
 
-Cross-stage scaffolding stays in `coach/`:
+Cross-stage scaffolding stays in `engine/`:
 
 - The ledger paths and lifecycle (`current_task.json` is what
   `record_verification` writes into; the file itself is owned by
-  `coach.state.StateStore`).
+  `engine.state.StateStore`).
 - The `Ledger` / `ProgressState` / `Gates` models — they include
   `verification`, `observation`, `reflection` slots because the ledger is
   the cross-stage state surface, but the types of those slots live here.
-- `TaskSession` stays in `coach.models` because it bundles a build artefact
+- `TaskSession` stays in `engine.models` because it bundles a build artefact
   (`GeneratedTask`) with its eventual verification result, crossing two
   stages.
 

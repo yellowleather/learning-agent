@@ -10,8 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from coach.errors import CoachError
-from coach.models import CurriculumMetadata
+from engine.errors import EngineError
+from engine.models import CurriculumMetadata
 from curriculum.parser import load_roadmap_dict
 
 
@@ -44,7 +44,7 @@ class CurriculumAccess:
         try:
             return self._roadmap_path.read_text()
         except FileNotFoundError as exc:
-            raise CoachError(f"Roadmap file not found: {self._roadmap_path}") from exc
+            raise EngineError(f"Roadmap file not found: {self._roadmap_path}") from exc
 
     def metadata(self) -> CurriculumMetadata:
         """Curriculum-level metadata (title, total weeks, target repo path)."""
@@ -59,7 +59,7 @@ class CurriculumAccess:
         for week in self.roadmap["weeks"]:
             if int(week["number"]) == week_number:
                 return week
-        raise CoachError(f"Week {week_number} does not exist in the roadmap.")
+        raise EngineError(f"Week {week_number} does not exist in the roadmap.")
 
     def current_week(self, current_week_number: int) -> dict[str, Any]:
         """Return the spec for the week the ledger says is currently active."""

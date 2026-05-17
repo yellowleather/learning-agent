@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from coach.errors import CoachError
+from engine.errors import EngineError
 
 
 PLAN_TITLE_RE = re.compile(r"^# (?P<title>.+)$", re.MULTILINE)
@@ -26,46 +26,46 @@ def load_roadmap_dict(roadmap_path: Path) -> dict[str, Any]:
     try:
         raw = roadmap_path.read_text()
     except FileNotFoundError as exc:
-        raise CoachError(f"Roadmap file not found: {roadmap_path}") from exc
+        raise EngineError(f"Roadmap file not found: {roadmap_path}") from exc
     return parse_roadmap_markdown(raw)
 
 
 def parse_roadmap_markdown(raw: str) -> dict[str, Any]:
     title_match = PLAN_TITLE_RE.search(raw)
     if not title_match:
-        raise CoachError("Roadmap markdown must start with a level-1 title.")
+        raise EngineError("Roadmap markdown must start with a level-1 title.")
 
     top_sections = split_sections(raw, TOP_LEVEL_SECTION_RE)
     if not top_sections:
-        raise CoachError("Roadmap markdown does not contain any level-2 sections.")
+        raise EngineError("Roadmap markdown does not contain any level-2 sections.")
 
     top_section_map = {heading: body for heading, body in top_sections if not heading.startswith("Week ")}
 
     overview = top_section_map.get("Overview", "").strip()
     if not overview:
-        raise CoachError("Roadmap markdown must contain a non-empty `## Overview` section.")
+        raise EngineError("Roadmap markdown must contain a non-empty `## Overview` section.")
 
     repository_structure_body = top_section_map.get("Repository Structure", "").strip()
     if not repository_structure_body:
-        raise CoachError("Roadmap markdown must contain a non-empty `## Repository Structure` section.")
+        raise EngineError("Roadmap markdown must contain a non-empty `## Repository Structure` section.")
 
     capstone_summary_body = top_section_map.get("Capstone Summary", "").strip()
     if not capstone_summary_body:
-        raise CoachError("Roadmap markdown must contain a non-empty `## Capstone Summary` section.")
+        raise EngineError("Roadmap markdown must contain a non-empty `## Capstone Summary` section.")
 
     week_sections = [(heading, body) for heading, body in top_sections if heading.startswith("Week ")]
     if not week_sections:
-        raise CoachError("Roadmap markdown must contain at least one week section.")
+        raise EngineError("Roadmap markdown must contain at least one week section.")
 
     weeks: list[dict[str, Any]] = []
     for expected_number, (heading, body) in enumerate(week_sections, start=1):
         match = WEEK_HEADING_RE.match(heading)
         if not match:
-            raise CoachError(f"Invalid week heading format: `## {heading}`.")
+            raise EngineError(f"Invalid week heading format: `## {heading}`.")
         week_number = int(match.group("number"))
         short_title = match.group("title").strip()
         if week_number != expected_number:
-            raise CoachError(
+            raise EngineError(
                 f"Week headings must be contiguous starting at 1; expected Week {expected_number} but found Week {week_number}."
             )
         weeks.append(parse_week_section(week_number, short_title, body))
@@ -92,13 +92,13 @@ def split_sections(block: str, pattern: re.Pattern[str]) -> list[tuple[str, str]
 def parse_repository_structure(body: str) -> dict[str, Any]:
     code_block_match = re.search(r"```(?:\w+)?\n(?P<tree>.*?)\n```", body, re.DOTALL)
     if not code_block_match:
-        raise CoachError("`## Repository Structure` must contain a fenced code block with the repository tree.")
+        raise EngineError("`## Repository Structure` must contain a fenced code block with the repository tree.")
 
     tree = code_block_match.group("tree").strip()
     description = body.replace(code_block_match.group(0), "").strip()
     directories = parse_repository_directories(tree)
     if not directories:
-        raise CoachError("`## Repository Structure` must list at least one scaffold directory.")
+        raise EngineError("`## Repository Structure` must list at least one scaffold directory.")
 
     return {
         "tree": tree,
@@ -126,21 +126,21 @@ def parse_week_section(week_number: int, short_title: str, body: str) -> dict[st
 
     for heading in REQUIRED_WEEK_SUBSECTIONS:
         if not subsection_map.get(heading, "").strip():
-            raise CoachError(f"Week {week_number} is missing required subsection `### {heading}`.")
+            raise EngineError(f"Week {week_number} is missing required subsection `### {heading}`.")
 
     topics_covered = extract_bullets(subsection_map["Topics Covered"])
     if not topics_covered:
-        raise CoachError(f"Week {week_number} `### Topics Covered` must contain direct bullet items.")
+        raise EngineError(f"Week {week_number} `### Topics Covered` must contain direct bullet items.")
 
     by_end = extract_bullets(subsection_map["By the End of This Week You Will Be Able To"])
     if not by_end:
-        raise CoachError(
+        raise EngineError(
             f"Week {week_number} `### By the End of This Week You Will Be Able To` must contain bullet items."
         )
 
     assessment_targets = extract_numbered_items(subsection_map["Assessment Targets"])
     if not assessment_targets:
-        raise CoachError(f"Week {week_number} `### Assessment Targets` must contain numbered items.")
+        raise EngineError(f"Week {week_number} `### Assessment Targets` must contain numbered items.")
 
     implementation = parse_implementation_subsection(week_number, subsection_map["Implementation"])
     key_resources = extract_bullets(subsection_map.get("Key Resources", ""))
@@ -171,18 +171,18 @@ def parse_implementation_subsection(week_number: int, body: str) -> dict[str, An
             files_label = candidate
             break
     if not files_label:
-        raise CoachError(
+        raise EngineError(
             f"Week {week_number} `### Implementation` must include `**Files created this week:**` "
             "or `**Files created/updated this week:**`."
         )
 
     deliverables_text = extract_inline_marker_value(body, "**Deliverables:**")
     if not deliverables_text:
-        raise CoachError(f"Week {week_number} `### Implementation` must include a `**Deliverables:**` line.")
+        raise EngineError(f"Week {week_number} `### Implementation` must include a `**Deliverables:**` line.")
 
     cloud_deployment = extract_inline_marker_value(body, "**Cloud deployment:**")
     if not cloud_deployment:
-        raise CoachError(f"Week {week_number} `### Implementation` must include a `**Cloud deployment:**` line.")
+        raise EngineError(f"Week {week_number} `### Implementation` must include a `**Cloud deployment:**` line.")
 
     files = parse_implementation_files(week_number, body, files_label)
     deliverable_paths = dedupe_preserving_order(
@@ -224,12 +224,12 @@ def parse_implementation_files(week_number: int, body: str, files_label: str) ->
             continue
         match = re.match(r"-\s+`(?P<path>[^`]+)`(?P<remainder>.*)$", stripped)
         if not match:
-            raise CoachError(
+            raise EngineError(
                 f"Week {week_number} implementation file bullets must begin with an explicit backticked repo-relative path."
             )
         path = normalize_repo_path(match.group("path"))
         if not path:
-            raise CoachError(f"Week {week_number} contains an invalid implementation file path: `{match.group('path')}`.")
+            raise EngineError(f"Week {week_number} contains an invalid implementation file path: `{match.group('path')}`.")
         remainder = match.group("remainder").strip()
         description = remainder.lstrip("—- ").strip()
         files.append(
@@ -240,7 +240,7 @@ def parse_implementation_files(week_number: int, body: str, files_label: str) ->
         )
 
     if not files:
-        raise CoachError(f"Week {week_number} `### Implementation` must list at least one file bullet.")
+        raise EngineError(f"Week {week_number} `### Implementation` must list at least one file bullet.")
     return files
 
 
@@ -260,7 +260,7 @@ def validate_structured_deliverables_have_paths(deliverables_text: str) -> None:
     for sentence in sentences:
         lower = sentence.lower()
         if any(keyword in lower for keyword in structured_keywords) and "`" not in sentence:
-            raise CoachError(
+            raise EngineError(
                 "Structured outputs in `**Deliverables:**` must have explicit repo-relative paths in backticks."
             )
 
@@ -271,11 +271,11 @@ def parse_capstone_summary(body: str) -> dict[str, Any]:
 
     artifacts_built = parse_markdown_table(subsection_map.get("Artifacts Built", ""))
     if not artifacts_built:
-        raise CoachError("`## Capstone Summary` must include a non-empty `### Artifacts Built` table.")
+        raise EngineError("`## Capstone Summary` must include a non-empty `### Artifacts Built` table.")
 
     what_you_can_now_do = subsection_map.get("What You Can Now Do", "").strip()
     if not what_you_can_now_do:
-        raise CoachError("`## Capstone Summary` must include a non-empty `### What You Can Now Do` section.")
+        raise EngineError("`## Capstone Summary` must include a non-empty `### What You Can Now Do` section.")
 
     return {
         "artifacts_built": artifacts_built,

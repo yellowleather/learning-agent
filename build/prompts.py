@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 from typing import Dict, Optional
 
-from coach.errors import CoachError
+from engine.errors import EngineError
 
 
 def load_prompt(name: str) -> str:
@@ -20,7 +20,7 @@ def load_prompt(name: str) -> str:
     try:
         return prompt_path.read_text().strip()
     except FileNotFoundError as exc:
-        raise CoachError(f"Prompt asset not found: {prompt_path}") from exc
+        raise EngineError(f"Prompt asset not found: {prompt_path}") from exc
 
 
 def render_prompt(name: str, replacements: Optional[Dict[str, str]] = None) -> str:
@@ -30,7 +30,7 @@ def render_prompt(name: str, replacements: Optional[Dict[str, str]] = None) -> s
 
     unresolved = sorted(set(re.findall(r"\{\{[A-Z0-9_]+\}\}", prompt)))
     if unresolved:
-        raise CoachError(
+        raise EngineError(
             f"Prompt asset {name} has unresolved placeholders: {', '.join(unresolved)}"
         )
     return prompt

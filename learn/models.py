@@ -12,7 +12,7 @@ from typing import List, Literal, Optional
 
 from pydantic import Field
 
-from coach._base import StrictModel
+from engine._base import StrictModel
 
 
 class ConceptCard(StrictModel):

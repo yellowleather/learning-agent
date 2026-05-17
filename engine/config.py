@@ -5,8 +5,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from coach.errors import CoachError
-from coach.models import AppConfig
+from engine.errors import EngineError
+from engine.models import AppConfig
 
 
 CONFIG_FILENAME = "coach.config.json"
@@ -18,7 +18,7 @@ def locate_repo_root(start: Optional[Path] = None) -> Path:
     for path in [current, *current.parents]:
         if (path / CONFIG_FILENAME).exists():
             return path
-    raise CoachError(
+    raise EngineError(
         f"Could not find {CONFIG_FILENAME}. Run commands from the repo or create the config file first."
     )
 
@@ -30,9 +30,9 @@ def load_config(start: Optional[Path] = None) -> tuple[Path, AppConfig]:
     try:
         data = json.loads(config_path.read_text())
     except FileNotFoundError as exc:
-        raise CoachError(f"Missing config file at {config_path}.") from exc
+        raise EngineError(f"Missing config file at {config_path}.") from exc
     except json.JSONDecodeError as exc:
-        raise CoachError(f"Config file {config_path} is not valid JSON: {exc}") from exc
+        raise EngineError(f"Config file {config_path} is not valid JSON: {exc}") from exc
     return repo_root, AppConfig.model_validate(data)
 
 

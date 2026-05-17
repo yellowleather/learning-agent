@@ -24,11 +24,11 @@ topic_chat/
     └── test_service.py
 ```
 
-## What lives here vs in coach/
+## What lives here vs in engine/
 
 Same rule as the rest of the workspace: anything that is *specific to the
 topic chat surface* lives in this package; cross-stage scaffolding stays
-in `coach/`.
+in `engine/`.
 
 In this package:
 
@@ -36,14 +36,14 @@ In this package:
 - `TopicChatTurn` — the one-message model used in chat histories.
 - The chat user-prompt template and its loader.
 
-In `coach/`:
+In `engine/`:
 
 - The orchestrator wiring (`WeekOrchestrator.answer_topic_chat`,
   `stream_topic_chat`, `_topic_chat_inputs`) — these are the cross-stage
   collectors that gather blockers / question progress / default-step
-  fallback and hand them to `TopicChat`. They live in `coach/` because
+  fallback and hand them to `TopicChat`. They live in `engine/` because
   they aggregate facts from learn, build, and verify simultaneously.
-- The Mentor system prompt (`coach/prompts/mentor.md`) — used for many
+- The Mentor system prompt (`engine/prompts/mentor.md`) — used for many
   Mentor-flavored calls, including topic chat.
 
 ## The data flow
@@ -57,7 +57,7 @@ user types -> UI form
         (formats system context, normalises history, streams provider)
    -> provider.answer_topic_chat or stream_topic_chat
         (uses topic_chat.prompts to render topic_chat.md as the user prompt;
-         uses coach.prompts to load mentor.md as the system prompt)
+         uses engine.prompts to load mentor.md as the system prompt)
 ```
 
 ## Strict event shape
@@ -71,7 +71,7 @@ user types -> UI form
   the provider wrapped it).
 
 A `done` event with an empty reply, or no `done` at all, raises
-`CoachError` — the surface treats an empty chat reply as a defect rather
+`EngineError` — the surface treats an empty chat reply as a defect rather
 than something to hide.
 
 ## Tests

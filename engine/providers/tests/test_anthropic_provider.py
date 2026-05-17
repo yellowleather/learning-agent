@@ -2,11 +2,11 @@ import io
 import json
 import urllib.error
 
-from coach.errors import CoachError
-from coach.models import ProgressState
+from engine.errors import EngineError
+from engine.models import ProgressState
 from topic_chat.models import TopicChatTurn
 from learn.models import ReadingMaterialPayload
-from coach.providers.anthropic_provider import AnthropicProvider
+from engine.providers.anthropic_provider import AnthropicProvider
 
 
 def _week_spec() -> dict:
@@ -123,10 +123,10 @@ def test_messages_create_surfaces_auth_failure(monkeypatch):
             temperature=0.2,
             max_tokens=100,
         )
-    except CoachError as exc:
+    except EngineError as exc:
         assert str(exc) == "Anthropic authentication failed. Check ANTHROPIC_API_KEY."
     else:  # pragma: no cover
-        raise AssertionError("Expected Anthropic auth failure to raise CoachError.")
+        raise AssertionError("Expected Anthropic auth failure to raise EngineError.")
 
 
 def test_generate_concept_cards_from_reading_uses_week_plan(monkeypatch):

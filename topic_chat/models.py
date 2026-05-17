@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from coach._base import StrictModel
+from engine._base import StrictModel
 
 
 class TopicChatTurn(StrictModel):

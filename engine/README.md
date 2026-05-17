@@ -1,4 +1,4 @@
-# coach/
+# engine/
 
 Cross-stage scaffolding for the weekly workflow. This package owns the
 orchestrator, the ledger and state store, the provider interface, and the
@@ -9,7 +9,7 @@ chat service lives in `topic_chat/`. Curriculum reads live in `curriculum/`.
 ## Layout
 
 ```
-coach/
+engine/
 ├── orchestrator.py       # WeekOrchestrator: week-level state machine
 ├── providers/            # LLM provider abstraction + adapters
 ├── prompts/              # Cross-stage prompts (mentor.md, junior.md)
@@ -18,13 +18,13 @@ coach/
 │                         #   CurriculumMetadata, CheckpointState,
 │                         #   GeneratedTask, TaskSession). Re-exports VerifyRecord
 │                         #   types from verify.models for callers that still
-│                         #   import them from coach.models.
+│                         #   import them from engine.models.
 ├── _base.py              # StrictModel base class (imported by every domain
-│                         #   package to avoid circular imports through coach.models)
+│                         #   package to avoid circular imports through engine.models)
 ├── state.py              # StateStore — durable ledger + ephemeral files +
 │                         #   archive lifecycle (cross-stage state surface)
 ├── config.py             # Config loading + repo-root discovery
-├── errors.py             # CoachError
+├── errors.py             # EngineError
 └── tests/                # Tests for orchestrator, CLI, config
 ```
 
@@ -39,7 +39,7 @@ package, not here:
 - `TopicChat`, chat history model, chat prompt → `topic_chat/`
 - HTTP server, HTML rendering, assets → `ui/`
 
-Anything that's **cross-stage scaffolding** stays in coach:
+Anything that's **cross-stage scaffolding** stays in engine:
 
 - The orchestrator and the week state machine
 - The persistence layer (`StateStore`) — file paths, archive lifecycle,
@@ -52,10 +52,10 @@ Anything that's **cross-stage scaffolding** stays in coach:
   `CheckpointState`).
 - `TaskSession` and `GeneratedTask` — these cross build (which produces
   the brief) and verify (which writes verification into the same session
-  via `update_task_verification`), so they live in coach as the
+  via `update_task_verification`), so they live in engine as the
   cross-stage contract.
 - Provider interface and adapters — providers implement methods that span
-  every stage; the abstraction belongs to coach.
+  every stage; the abstraction belongs to engine.
 - CLI, UI, topic chat, config, errors — all cross-stage.
 
 ## Mental model
@@ -82,6 +82,6 @@ the one place that aggregates across them.
 
 ## Tests
 
-Tests in `coach/tests/` cover the orchestrator, CLI, and config. Tests
+Tests in `engine/tests/` cover the orchestrator, CLI, and config. Tests
 for the UI, chat service, and each stage live with their respective
 packages.

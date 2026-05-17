@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
 
-from coach.config import load_config
-from coach.orchestrator import WeekOrchestrator
-from coach.models import (
+from engine.config import load_config
+from engine.orchestrator import WeekOrchestrator
+from engine.models import (
     GeneratedTask,
 )
 from verify.models import (
@@ -536,7 +536,7 @@ def make_controller(tmp_path: Path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     repo_root, config = load_config()
     controller = WeekOrchestrator(repo_root, config)
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: FakeProvider())
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: FakeProvider())
     return controller, target_repo
 
 
@@ -760,7 +760,7 @@ def test_compare_learning_providers_continues_when_one_provider_is_invalid(monke
 def test_answer_topic_chat_builds_learn_context(monkeypatch, tmp_path):
     controller, _target_repo = make_controller(tmp_path, monkeypatch)
     provider = ChatCapturingProvider()
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: provider)
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: provider)
     controller.initialize()
     controller.learn.generate_assist()
 
@@ -786,7 +786,7 @@ def test_answer_topic_chat_builds_learn_context(monkeypatch, tmp_path):
 def test_answer_topic_chat_includes_selected_ui_text(monkeypatch, tmp_path):
     controller, _target_repo = make_controller(tmp_path, monkeypatch)
     provider = ChatCapturingProvider()
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: provider)
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: provider)
     controller.initialize()
     controller.learn.generate_assist()
 
@@ -809,7 +809,7 @@ def test_answer_topic_chat_includes_selected_ui_text(monkeypatch, tmp_path):
 def test_stream_topic_chat_emits_events_and_context(monkeypatch, tmp_path):
     controller, _target_repo = make_controller(tmp_path, monkeypatch)
     provider = StreamingChatProvider()
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: provider)
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: provider)
     controller.initialize()
     controller.learn.generate_assist()
 
@@ -836,7 +836,7 @@ def test_stream_topic_chat_emits_events_and_context(monkeypatch, tmp_path):
 
 def test_answer_topic_chat_normalizes_json_wrapped_reply(monkeypatch, tmp_path):
     controller, _target_repo = make_controller(tmp_path, monkeypatch)
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: JsonChatProvider())
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: JsonChatProvider())
     controller.initialize()
 
     result = controller.answer_topic_chat(
@@ -850,7 +850,7 @@ def test_answer_topic_chat_normalizes_json_wrapped_reply(monkeypatch, tmp_path):
 
 def test_stream_topic_chat_normalizes_json_wrapped_final_reply(monkeypatch, tmp_path):
     controller, _target_repo = make_controller(tmp_path, monkeypatch)
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: JsonStreamingChatProvider())
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: JsonStreamingChatProvider())
     controller.initialize()
 
     events = list(

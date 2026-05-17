@@ -1,7 +1,7 @@
-from coach.models import AppConfig
-from coach.providers.anthropic_provider import AnthropicProvider
-from coach.providers.factory import get_provider
-from coach.providers.openai_provider import OpenAIProvider
+from engine.models import AppConfig
+from engine.providers.anthropic_provider import AnthropicProvider
+from engine.providers.factory import get_provider
+from engine.providers.openai_provider import OpenAIProvider
 
 
 def test_get_provider_returns_openai_provider():

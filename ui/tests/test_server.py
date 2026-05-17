@@ -1,6 +1,6 @@
 import json
 
-from coach.errors import CoachError
+from engine.errors import EngineError
 from ui.server import (
     format_resource_text_html,
     render_markdown_block,
@@ -472,7 +472,7 @@ def test_render_page_shows_learning_assist(monkeypatch, tmp_path):
     (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
     (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: FakeProvider())
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: FakeProvider())
 
     assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
 
@@ -589,7 +589,7 @@ def test_render_page_uses_curriculum_length_after_initialization(monkeypatch, tm
     (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
     (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: FakeProvider())
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: FakeProvider())
 
     assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
 
@@ -630,7 +630,7 @@ def test_marathon_strip_advances_when_a_required_question_passes(monkeypatch, tm
     (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
     (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: FakeProvider())
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: FakeProvider())
 
     assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
 
@@ -662,7 +662,7 @@ def test_learning_answer_feedback_renders_inside_question_workspace(monkeypatch,
     (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
     (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: FakeProvider())
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: FakeProvider())
 
     assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
 
@@ -687,7 +687,7 @@ def test_failed_answer_is_reloaded_into_textarea(monkeypatch, tmp_path):
     (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
     (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: FailingProvider())
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: FailingProvider())
 
     assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
     assert run_action("learning_generate", {"action": ["learning_generate"]}) == "Generated Learning Assist for Week 1."
@@ -725,7 +725,7 @@ def test_run_topic_chat_returns_json(monkeypatch, tmp_path):
     (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
     (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: FakeProvider())
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: FakeProvider())
 
     assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
     assert run_action("learning_generate", {"action": ["learning_generate"]}) == "Generated Learning Assist for Week 1."
@@ -751,7 +751,7 @@ def test_run_topic_chat_includes_selected_text_context(monkeypatch, tmp_path):
     (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
     provider = TopicChatContextCapturingProvider()
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: provider)
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: provider)
 
     assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
     assert run_action("learning_generate", {"action": ["learning_generate"]}) == "Generated Learning Assist for Week 1."
@@ -788,7 +788,7 @@ def test_render_page_includes_topic_chat_selection_chip(monkeypatch, tmp_path):
     (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
     (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: FakeProvider())
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: FakeProvider())
 
     assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
 
@@ -805,7 +805,7 @@ def test_render_page_includes_sidebar_toggle_controls(monkeypatch, tmp_path):
     (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
     (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: FakeProvider())
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: FakeProvider())
 
     assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
 
@@ -827,7 +827,7 @@ def test_render_page_uses_taller_assistant_chat_shell(monkeypatch, tmp_path):
     (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
     (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: FakeProvider())
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: FakeProvider())
 
     assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
 
@@ -844,7 +844,7 @@ def test_run_topic_chat_stream_returns_events(monkeypatch, tmp_path):
     (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
     (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: StreamingProvider())
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: StreamingProvider())
 
     assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
     assert run_action("learning_generate", {"action": ["learning_generate"]}) == "Generated Learning Assist for Week 1."
@@ -871,7 +871,7 @@ def test_run_topic_chat_stream_returns_validation_error_event(monkeypatch, tmp_p
     (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
     (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: FakeProvider())
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: FakeProvider())
 
     assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
 
@@ -894,7 +894,7 @@ def test_run_topic_chat_returns_validation_error(monkeypatch, tmp_path):
     (tmp_path / "ai_inference_engineering" / "simple_server").mkdir(parents=True, exist_ok=True)
     (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: FakeProvider())
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: FakeProvider())
 
     assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
 
@@ -907,7 +907,7 @@ def test_run_topic_chat_returns_validation_error(monkeypatch, tmp_path):
                 "selected_question_id": "prefill_decode_baseline",
             }
         )
-    except CoachError as exc:
+    except EngineError as exc:
         assert str(exc) == "Topic chat message cannot be empty."
     else:  # pragma: no cover
         raise AssertionError("Expected topic chat request to fail.")
@@ -920,7 +920,7 @@ def test_render_page_autoloads_learning_assist_only_once(monkeypatch, tmp_path):
     (tmp_path / "ai_inference_engineering" / "docs").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
     provider = CountingProvider()
-    monkeypatch.setattr("coach.orchestrator.get_provider", lambda _config: provider)
+    monkeypatch.setattr("engine.orchestrator.get_provider", lambda _config: provider)
 
     assert run_action("init", {"action": ["init"]}) == "Initialized Week 1."
 

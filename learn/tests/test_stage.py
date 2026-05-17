@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pytest
 
-from coach.config import AppConfig
-from coach.errors import CoachError
-from coach.models import (
+from engine.config import AppConfig
+from engine.errors import EngineError
+from engine.models import (
     ArtifactState,
     Gates,
     Ledger,
@@ -35,7 +35,7 @@ from learn.models import (
     ReadingMaterialPayload,
 )
 from learn.stage import LearnStage
-from coach.state import StateStore
+from engine.state import StateStore
 
 
 # -- Test doubles ----------------------------------------------------------
@@ -382,10 +382,10 @@ def test_normalize_concept_cards_assigns_ids_and_dedupes(tmp_path: Path) -> None
 
 
 def test_question_by_id_raises_when_missing(tmp_path: Path) -> None:
-    # Asking for a question id that doesn't exist surfaces a CoachError
+    # Asking for a question id that doesn't exist surfaces a EngineError
     # with the id echoed back, so the caller can present a useful message.
     stage = _make_stage(tmp_path)
     session = _make_session(questions=[_baseline_question("q1")])
-    with pytest.raises(CoachError) as excinfo:
+    with pytest.raises(EngineError) as excinfo:
         stage._question_by_id(session, "nope")
     assert "nope" in str(excinfo.value)

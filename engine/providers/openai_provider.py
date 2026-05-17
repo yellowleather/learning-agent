@@ -7,8 +7,8 @@ from typing import Any, Type, TypeVar
 
 from pydantic import BaseModel
 
-from coach.errors import CoachError
-from coach.models import (
+from engine.errors import EngineError
+from engine.models import (
     GeneratedTask,
     ProgressState,
 )
@@ -24,8 +24,8 @@ from learn.models import (
     ReadingMaterialPayload,
 )
 from build.prompts import render_prompt as build_render_prompt
-from coach.prompts import load_prompt
-from coach.providers.base import LLMProvider
+from engine.prompts import load_prompt
+from engine.providers.base import LLMProvider
 from learn.prompts import render_prompt as learn_render_prompt
 from topic_chat.prompts import render_prompt as chat_render_prompt
 
@@ -149,7 +149,7 @@ class OpenAIProvider(LLMProvider):
         )
         content = response.choices[0].message.content
         if not content or not content.strip():
-            raise CoachError("OpenAI provider returned an empty topic chat response.")
+            raise EngineError("OpenAI provider returned an empty topic chat response.")
         return content.strip()
 
     def stream_topic_chat(
@@ -178,7 +178,7 @@ class OpenAIProvider(LLMProvider):
             emitted = True
             yield text
         if not emitted:
-            raise CoachError("OpenAI provider returned an empty topic chat response.")
+            raise EngineError("OpenAI provider returned an empty topic chat response.")
 
     def _topic_chat_messages(
         self,
@@ -239,7 +239,7 @@ class OpenAIProvider(LLMProvider):
         )
         content = response.choices[0].message.content
         if not content:
-            raise CoachError("OpenAI provider returned an empty response.")
+            raise EngineError("OpenAI provider returned an empty response.")
         payload = self._extract_json(content)
         payload = self._normalize_payload(payload, response_model)
         return response_model.model_validate(payload)
@@ -255,51 +255,51 @@ class OpenAIProvider(LLMProvider):
         )
         content = response.choices[0].message.content
         if not content or not content.strip():
-            raise CoachError("OpenAI provider returned an empty response.")
+            raise EngineError("OpenAI provider returned an empty response.")
         return content.strip()
 
     def _chat_completions_create(self, **kwargs: Any):
         client = self._client()
         try:
             return client.chat.completions.create(**kwargs)
-        except CoachError:
+        except EngineError:
             raise
         except Exception as exc:
             raise self._translate_chat_error(exc) from exc
 
-    def _translate_chat_error(self, exc: Exception) -> CoachError:
+    def _translate_chat_error(self, exc: Exception) -> EngineError:
         try:
             import openai
         except ImportError:
-            return CoachError(str(exc) or "OpenAI request failed.")
+            return EngineError(str(exc) or "OpenAI request failed.")
 
         if isinstance(exc, openai.AuthenticationError):
-            return CoachError("OpenAI authentication failed. Check OPENAI_API_KEY.")
+            return EngineError("OpenAI authentication failed. Check OPENAI_API_KEY.")
         if isinstance(exc, openai.APIConnectionError):
-            return CoachError("OpenAI connection failed. Check network access and API configuration.")
+            return EngineError("OpenAI connection failed. Check network access and API configuration.")
         if isinstance(exc, openai.APITimeoutError):
-            return CoachError("OpenAI request timed out. Try again.")
+            return EngineError("OpenAI request timed out. Try again.")
         if isinstance(exc, openai.RateLimitError):
-            return CoachError("OpenAI rate limit hit. Try again shortly.")
+            return EngineError("OpenAI rate limit hit. Try again shortly.")
         if isinstance(exc, openai.APIStatusError):
             status_code = getattr(exc, "status_code", None)
             if status_code:
-                return CoachError(f"OpenAI request failed with status {status_code}.")
-            return CoachError("OpenAI request failed.")
+                return EngineError(f"OpenAI request failed with status {status_code}.")
+            return EngineError("OpenAI request failed.")
         if isinstance(exc, openai.OpenAIError):
-            return CoachError(str(exc) or "OpenAI request failed.")
-        return CoachError(str(exc) or "OpenAI request failed.")
+            return EngineError(str(exc) or "OpenAI request failed.")
+        return EngineError(str(exc) or "OpenAI request failed.")
 
     def _client(self):
         if not self.model:
-            raise CoachError("Config field `model` must be set before using the OpenAI provider.")
+            raise EngineError("Config field `model` must be set before using the OpenAI provider.")
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise CoachError("OPENAI_API_KEY must be set before using the OpenAI provider.")
+            raise EngineError("OPENAI_API_KEY must be set before using the OpenAI provider.")
         try:
             from openai import OpenAI
         except ImportError as exc:
-            raise CoachError("The `openai` package is not installed.") from exc
+            raise EngineError("The `openai` package is not installed.") from exc
         return OpenAI(api_key=api_key)
 
     def _extract_json(self, content: str):
@@ -311,7 +311,7 @@ class OpenAIProvider(LLMProvider):
         try:
             return json.loads(text)
         except json.JSONDecodeError as exc:
-            raise CoachError(f"Model response was not valid JSON: {exc}") from exc
+            raise EngineError(f"Model response was not valid JSON: {exc}") from exc
 
     def _normalize_payload(self, payload: Any, response_model: Type[ResponseModelT]) -> Any:
         if not isinstance(payload, dict):

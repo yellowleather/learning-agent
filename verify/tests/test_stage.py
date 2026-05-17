@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from coach.config import AppConfig
-from coach.errors import CoachError
-from coach.models import (
+from engine.config import AppConfig
+from engine.errors import EngineError
+from engine.models import (
     ArtifactState,
     Gates,
     Ledger,
@@ -24,7 +24,7 @@ from verify.models import (
     ReflectionRecord,
 )
 from verify.stage import VerifyStage
-from coach.state import StateStore
+from engine.state import StateStore
 
 
 def _make_stage(tmp_path: Path, *, required_metrics: list[str] | None = None) -> VerifyStage:
@@ -132,7 +132,7 @@ def test_record_verification_requires_task_to_exist(tmp_path: Path) -> None:
     # Verification must always be tied back to a task. Without a current task
     # session on disk, recording verification is a defect.
     stage = _make_stage(tmp_path)
-    with pytest.raises(CoachError):
+    with pytest.raises(EngineError):
         stage.record_verification(True, "ok")
 
 

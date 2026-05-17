@@ -16,20 +16,20 @@ ui/
     └── test_server.py
 ```
 
-## What lives here vs in coach/
+## What lives here vs in engine/
 
 The package owns everything specific to the web UI — request handling,
-HTML rendering, asset serving, stage-step UI logic. It depends on `coach.*`
+HTML rendering, asset serving, stage-step UI logic. It depends on `engine.*`
 and the step packages (`learn`, `build`, `verify`) the way any other
 caller does: through `WeekOrchestrator` and the stage instances mounted
 on it. The UI does not reach into stage internals or persistence directly.
 
-What stays in `coach/`:
+What stays in `engine/`:
 
-- The CLI (`coach.cli`) — including the `coach serve` command that spawns
+- The CLI (`engine.cli`) — including the `coach serve` command that spawns
   this UI server. The CLI imports `serve_ui`, `DEFAULT_UI_HOST`, and
   `DEFAULT_UI_PORT` from `ui.server`.
-- The reload watcher (`coach.cli.snapshot_reload_state`) — it watches the
+- The reload watcher (`engine.cli.snapshot_reload_state`) — it watches the
   `ui/` directory so source edits trigger a server restart, just like it
   watches the other top-level packages.
 
@@ -43,7 +43,7 @@ coach serve --host 0.0.0.0 --port 8080
 coach serve --no-reload   # disable the auto-restart loop
 ```
 
-The default reload loop watches `coach/`, `ui/`, `learn/`, `build/`,
+The default reload loop watches `engine/`, `ui/`, `learn/`, `build/`,
 `verify/`, `curriculum/`, plus `coach.config.json`, `pyproject.toml`, and
 `.env`. Edits trigger a clean restart of the UI process; runtime state
 under `state/` is intentionally excluded so a change to the ledger
