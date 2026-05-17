@@ -7,8 +7,8 @@ from typing import Any
 from coach.models import (
     GeneratedTask,
     ProgressState,
-    TopicChatTurn,
 )
+from topic_chat.models import TopicChatTurn
 from verify.models import (
     ObservationRecord,
 )

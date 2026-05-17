@@ -1,22 +1,21 @@
 # coach/
 
 Cross-stage scaffolding for the weekly workflow. This package owns the
-orchestrator, the ledger and state store, the topic-chat service, the
-provider interface, and the CLI. Stage-specific code lives in sibling
-top-level packages: `learn/`, `build/`, `verify/`. The local web UI lives
-in `ui/`. Curriculum reads live in `curriculum/`.
+orchestrator, the ledger and state store, the provider interface, and the
+CLI. Stage-specific code lives in sibling top-level packages: `learn/`,
+`build/`, `verify/`. The local web UI lives in `ui/`. The week-scoped
+chat service lives in `topic_chat/`. Curriculum reads live in `curriculum/`.
 
 ## Layout
 
 ```
 coach/
 ├── orchestrator.py       # WeekOrchestrator: week-level state machine
-├── topic_chat.py         # TopicChat service (ad-hoc grounded chat)
 ├── providers/            # LLM provider abstraction + adapters
-├── prompts/              # Cross-stage prompts (mentor.md, junior.md, topic_chat.md)
+├── prompts/              # Cross-stage prompts (mentor.md, junior.md)
 ├── cli.py                # Typer CLI entrypoint (spawns the UI in ui/)
 ├── models.py             # Cross-stage models (Ledger, ProgressState, Gates,
-│                         #   CurriculumMetadata, TopicChatTurn, CheckpointState,
+│                         #   CurriculumMetadata, CheckpointState,
 │                         #   GeneratedTask, TaskSession). Re-exports VerifyRecord
 │                         #   types from verify.models for callers that still
 │                         #   import them from coach.models.
@@ -26,7 +25,7 @@ coach/
 │                         #   archive lifecycle (cross-stage state surface)
 ├── config.py             # Config loading + repo-root discovery
 ├── errors.py             # CoachError
-└── tests/                # Tests for orchestrator, CLI, UI, topic_chat, config
+└── tests/                # Tests for orchestrator, CLI, config
 ```
 
 ## What lives here vs in step packages
@@ -37,6 +36,7 @@ package, not here:
 - `LearnStage`, learning models, learning prompts → `learn/`
 - `BuildStage`, build-agent models, build prompts → `build/`
 - `VerifyStage`, evidence models → `verify/`
+- `TopicChat`, chat history model, chat prompt → `topic_chat/`
 - HTTP server, HTML rendering, assets → `ui/`
 
 Anything that's **cross-stage scaffolding** stays in coach:
@@ -71,16 +71,17 @@ those stages directly.
 The single source of truth is `state/progress_ledger.json`. Stages
 communicate through the ledger, not by calling each other.
 
-## TopicChat
+## TopicChat wiring
 
-A standalone chat surface that the orchestrator wires up. It owns chat-
-internal transformations (reply normalisation, JSON-wrapped reply
-unwrapping, selection-context truncation, system-context formatting) and
-the streaming handshake with the provider. It receives cross-stage facts
-(blockers, question progress, default-step fallback) from the orchestrator
-rather than reaching into stages.
+The chat service itself lives in the sibling `topic_chat/` package. The
+orchestrator owns the wiring: `WeekOrchestrator.answer_topic_chat`,
+`stream_topic_chat`, and `_topic_chat_inputs` gather the cross-stage facts
+(blockers, question progress, default-step fallback) and hand them to
+`TopicChat`. The service never reaches into stages — the orchestrator is
+the one place that aggregates across them.
 
 ## Tests
 
-Tests in `coach/tests/` cover the orchestrator, CLI, UI, topic_chat, and
-config. Stage-specific tests live with their stage packages.
+Tests in `coach/tests/` cover the orchestrator, CLI, and config. Tests
+for the UI, chat service, and each stage live with their respective
+packages.

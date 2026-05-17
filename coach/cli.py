@@ -43,6 +43,7 @@ RELOAD_WATCH_TARGETS = (
     "build",
     "verify",
     "curriculum",
+    "topic_chat",
     "coach.config.json",
     "pyproject.toml",
     ".env",

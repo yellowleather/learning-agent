@@ -54,11 +54,6 @@ class MetricsState(StrictModel):
     recorded: Dict[str, Any] = Field(default_factory=dict)
 
 
-class TopicChatTurn(StrictModel):
-    role: Literal["user", "assistant"]
-    content: str
-
-
 class CheckpointState(StrictModel):
     id: str
     title: str

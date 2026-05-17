@@ -20,16 +20,21 @@ The platform is structured as a stage-driven workflow rather than a multi-agent 
 .
 ├── coach/                     # Cross-stage scaffolding only
 │   ├── orchestrator.py        # WeekOrchestrator (status, gates, week transitions)
-│   ├── topic_chat.py          # Standalone chat service
 │   ├── providers/             # LLM provider abstraction + concrete adapters
-│   ├── prompts/               # Cross-stage prompts (mentor.md, junior.md, topic_chat.md)
+│   ├── prompts/               # Cross-stage prompts (mentor.md, junior.md)
 │   ├── cli.py                 # Typer CLI
 │   ├── models.py              # Cross-stage models (Ledger, Gates, TaskSession, …)
 │   ├── _base.py               # Shared StrictModel base class
 │   ├── state.py               # Persistent + ephemeral state storage
 │   ├── config.py              # Config + repo-root discovery
 │   ├── errors.py              # CoachError
-│   └── tests/                 # Orchestrator / CLI / topic-chat / config tests
+│   └── tests/                 # Orchestrator / CLI / config tests
+├── topic_chat/                # Week-scoped chat service (used from any stage)
+│   ├── service.py             # TopicChat class
+│   ├── models.py              # TopicChatTurn
+│   ├── prompts.py             # Prompt loader for topic_chat/prompts/
+│   ├── prompts/topic_chat.md
+│   └── tests/
 ├── ui/                        # Local web UI (http.server based)
 │   ├── server.py              # HTTP server, request routing, HTML rendering
 │   ├── assets/                # Icon + illustrations

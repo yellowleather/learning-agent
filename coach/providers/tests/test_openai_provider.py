@@ -6,8 +6,8 @@ import openai
 from coach.errors import CoachError
 from coach.models import (
     ProgressState,
-    TopicChatTurn,
 )
+from topic_chat.models import TopicChatTurn
 from verify.models import (
     ObservationRecord,
 )

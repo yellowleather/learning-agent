@@ -11,8 +11,8 @@ from coach.errors import CoachError
 from coach.models import (
     GeneratedTask,
     ProgressState,
-    TopicChatTurn,
 )
+from topic_chat.models import TopicChatTurn
 from verify.models import (
     ObservationRecord,
 )
@@ -24,9 +24,10 @@ from learn.models import (
     ReadingMaterialPayload,
 )
 from build.prompts import render_prompt as build_render_prompt
-from coach.prompts import load_prompt, render_prompt
+from coach.prompts import load_prompt
 from coach.providers.base import LLMProvider
 from learn.prompts import render_prompt as learn_render_prompt
+from topic_chat.prompts import render_prompt as chat_render_prompt
 
 
 ResponseModelT = TypeVar("ResponseModelT", bound=BaseModel)
@@ -191,7 +192,7 @@ class OpenAIProvider(LLMProvider):
         for turn in history[-10:]:
             history_lines.append(f"{turn.role.title()}: {turn.content}")
         history_text = "\n".join(history_lines) if history_lines else "(no prior chat)"
-        user_prompt = render_prompt(
+        user_prompt = chat_render_prompt(
             "topic_chat.md",
             {
                 "WEEK_PLAN": self._week_plan_text(week_spec),

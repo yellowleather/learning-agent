@@ -22,7 +22,7 @@ from learn.models import (
     LearningSession,
     ReadingMaterialPayload,
 )
-from coach.topic_chat import MAX_SELECTION_CHARS, TopicChat
+from topic_chat.service import MAX_SELECTION_CHARS, TopicChat
 
 
 class _RecordingProvider:

@@ -7,7 +7,7 @@ import urllib.request
 from typing import Any
 
 from coach.errors import CoachError
-from coach.models import TopicChatTurn
+from topic_chat.models import TopicChatTurn
 from coach.providers.openai_provider import OpenAIProvider, ResponseModelT
 
 

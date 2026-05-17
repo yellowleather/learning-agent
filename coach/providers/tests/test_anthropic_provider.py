@@ -3,7 +3,8 @@ import json
 import urllib.error
 
 from coach.errors import CoachError
-from coach.models import ProgressState, TopicChatTurn
+from coach.models import ProgressState
+from topic_chat.models import TopicChatTurn
 from learn.models import ReadingMaterialPayload
 from coach.providers.anthropic_provider import AnthropicProvider
 

@@ -31,6 +31,7 @@ packages = [
   "learn",
   "verify",
   "ui",
+  "topic_chat",
 ]
 
 [tool.setuptools.package-data]
@@ -38,6 +39,7 @@ coach = ["prompts/*.md"]
 curriculum = ["prompts/*.md"]
 build = ["prompts/*.md"]
 learn = ["prompts/*.md"]
+topic_chat = ["prompts/*.md"]
 ui = ["assets/*.png", "assets/illustrations/*.svg"]
 
 [tool.pytest.ini_options]
@@ -50,4 +52,5 @@ testpaths = [
   "learn/tests",
   "verify/tests",
   "ui/tests",
+  "topic_chat/tests",
 ]

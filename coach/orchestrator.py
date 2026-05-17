@@ -12,8 +12,8 @@ from coach.models import (
     CheckpointState,
     CurriculumMetadata,
     Ledger,
-    TopicChatTurn,
 )
+from topic_chat.models import TopicChatTurn
 from verify.models import (
     ObservationRecord,
     ReflectionRecord,
@@ -27,7 +27,7 @@ from build.stage import BuildStage
 from learn.stage import LearnStage
 from verify.stage import VerifyStage
 from coach.state import StateStore
-from coach.topic_chat import TopicChat
+from topic_chat.service import TopicChat
 
 
 class WeekOrchestrator:
