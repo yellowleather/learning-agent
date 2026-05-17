@@ -21,7 +21,7 @@ from coach.errors import CoachError
 from verify.models import ObservationRecord, ReflectionRecord
 from coach.providers.anthropic_provider import AnthropicProvider
 from coach.providers.openai_provider import OpenAIProvider
-from coach.ui import DEFAULT_UI_HOST, DEFAULT_UI_PORT, serve_ui
+from ui.server import DEFAULT_UI_HOST, DEFAULT_UI_PORT, serve_ui
 
 
 app = typer.Typer(help="Guided single-controller learning agent.")
@@ -38,6 +38,11 @@ app.add_typer(curriculum_app, name="curriculum")
 RELOAD_POLL_INTERVAL_SECONDS = 0.75
 RELOAD_WATCH_TARGETS = (
     "coach",
+    "ui",
+    "learn",
+    "build",
+    "verify",
+    "curriculum",
     "coach.config.json",
     "pyproject.toml",
     ".env",

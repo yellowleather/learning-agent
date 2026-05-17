@@ -24,14 +24,16 @@ The platform is structured as a stage-driven workflow rather than a multi-agent 
 │   ├── providers/             # LLM provider abstraction + concrete adapters
 │   ├── prompts/               # Cross-stage prompts (mentor.md, junior.md, topic_chat.md)
 │   ├── cli.py                 # Typer CLI
-│   ├── ui.py                  # Local web UI
 │   ├── models.py              # Cross-stage models (Ledger, Gates, TaskSession, …)
 │   ├── _base.py               # Shared StrictModel base class
 │   ├── state.py               # Persistent + ephemeral state storage
 │   ├── config.py              # Config + repo-root discovery
 │   ├── errors.py              # CoachError
-│   ├── assets/                # UI assets
-│   └── tests/                 # Orchestrator / CLI / UI / topic-chat / config tests
+│   └── tests/                 # Orchestrator / CLI / topic-chat / config tests
+├── ui/                        # Local web UI (http.server based)
+│   ├── server.py              # HTTP server, request routing, HTML rendering
+│   ├── assets/                # Icon + illustrations
+│   └── tests/
 ├── learn/                     # Learn step
 │   ├── stage.py               # LearnStage
 │   ├── models.py              # ConceptCard, LearningQuestion, LearningSession, …
@@ -94,14 +96,13 @@ API keys can live in a repo-local `.env`. The loader reads `.env` automatically 
 
 ## Quick Start
 
+One-time setup — virtual environment, install, API key:
+
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -e '.[dev]'
 export ANTHROPIC_API_KEY=your_key_here
-
-.venv/bin/python -m coach init
-.venv/bin/python -m coach status
 ```
 
 Start the local UI:
@@ -110,7 +111,13 @@ Start the local UI:
 .venv/bin/python -m coach serve
 ```
 
-UI defaults to `http://127.0.0.1:4010` with file-watch reload enabled.
+UI defaults to `http://127.0.0.1:4010` with file-watch reload enabled. On
+first run you'll also want to initialise the ledger for week 1:
+
+```bash
+.venv/bin/python -m coach init       # creates state/progress_ledger.json
+.venv/bin/python -m coach status     # optional: read-only sanity check
+```
 
 ## CLI Workflow
 

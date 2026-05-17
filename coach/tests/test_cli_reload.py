@@ -12,19 +12,23 @@ def test_build_reload_command_includes_no_reload_flag():
 
 
 def test_snapshot_reload_state_watches_code_and_config_not_runtime_state(tmp_path: Path):
-    (tmp_path / "coach").mkdir()
-    (tmp_path / "coach" / "ui.py").write_text("print('ui')\n")
+    # Reload watches every top-level package directory (coach, ui, learn,
+    # build, verify, curriculum) plus repo-local config files. It must
+    # NOT include runtime state or __pycache__ entries — those churn on
+    # every run and would force needless restarts.
+    (tmp_path / "ui").mkdir()
+    (tmp_path / "ui" / "server.py").write_text("print('ui')\n")
     (tmp_path / "coach.config.json").write_text("{}\n")
     (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")
     (tmp_path / "state").mkdir()
     (tmp_path / "state" / "progress_ledger.json").write_text("{}\n")
-    (tmp_path / "coach" / "__pycache__").mkdir()
-    (tmp_path / "coach" / "__pycache__" / "ui.cpython-39.pyc").write_bytes(b"pyc")
+    (tmp_path / "ui" / "__pycache__").mkdir()
+    (tmp_path / "ui" / "__pycache__" / "server.cpython-39.pyc").write_bytes(b"pyc")
 
     snapshot = snapshot_reload_state(tmp_path)
 
-    assert "coach/ui.py" in snapshot
+    assert "ui/server.py" in snapshot
     assert "coach.config.json" in snapshot
     assert "pyproject.toml" in snapshot
     assert "state/progress_ledger.json" not in snapshot
-    assert "learning_agent/__pycache__/ui.cpython-39.pyc" not in snapshot
+    assert "ui/__pycache__/server.cpython-39.pyc" not in snapshot

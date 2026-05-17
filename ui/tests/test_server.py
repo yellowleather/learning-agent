@@ -1,7 +1,7 @@
 import json
 
 from coach.errors import CoachError
-from coach.ui import (
+from ui.server import (
     format_resource_text_html,
     render_markdown_block,
     render_page,

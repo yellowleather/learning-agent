@@ -30,13 +30,15 @@ packages = [
   "build",
   "learn",
   "verify",
+  "ui",
 ]
 
 [tool.setuptools.package-data]
-coach = ["prompts/*.md", "assets/*.png", "assets/illustrations/*.svg"]
+coach = ["prompts/*.md"]
 curriculum = ["prompts/*.md"]
 build = ["prompts/*.md"]
 learn = ["prompts/*.md"]
+ui = ["assets/*.png", "assets/illustrations/*.svg"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
@@ -47,4 +49,5 @@ testpaths = [
   "build/tests",
   "learn/tests",
   "verify/tests",
+  "ui/tests",
 ]

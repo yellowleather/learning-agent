@@ -2,9 +2,9 @@
 
 Cross-stage scaffolding for the weekly workflow. This package owns the
 orchestrator, the ledger and state store, the topic-chat service, the
-provider interface, the CLI, and the UI. Stage-specific code lives in
-sibling top-level packages: `learn/`, `build/`, `verify/`. Curriculum
-reads live in `curriculum/`.
+provider interface, and the CLI. Stage-specific code lives in sibling
+top-level packages: `learn/`, `build/`, `verify/`. The local web UI lives
+in `ui/`. Curriculum reads live in `curriculum/`.
 
 ## Layout
 
@@ -14,8 +14,7 @@ coach/
 ├── topic_chat.py         # TopicChat service (ad-hoc grounded chat)
 ├── providers/            # LLM provider abstraction + adapters
 ├── prompts/              # Cross-stage prompts (mentor.md, junior.md, topic_chat.md)
-├── cli.py                # Typer CLI entrypoint
-├── ui.py                 # Local web UI
+├── cli.py                # Typer CLI entrypoint (spawns the UI in ui/)
 ├── models.py             # Cross-stage models (Ledger, ProgressState, Gates,
 │                         #   CurriculumMetadata, TopicChatTurn, CheckpointState,
 │                         #   GeneratedTask, TaskSession). Re-exports VerifyRecord
@@ -38,6 +37,7 @@ package, not here:
 - `LearnStage`, learning models, learning prompts → `learn/`
 - `BuildStage`, build-agent models, build prompts → `build/`
 - `VerifyStage`, evidence models → `verify/`
+- HTTP server, HTML rendering, assets → `ui/`
 
 Anything that's **cross-stage scaffolding** stays in coach:
 
