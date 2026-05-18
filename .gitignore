@@ -6,3 +6,5 @@ state/
 .env
 tmp/
 .scratch_deleted/
+.claude/settings.local.json
+*.egg-info/
