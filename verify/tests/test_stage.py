@@ -5,6 +5,8 @@ evidence-required policy question, and the evidence-reliability checkpoint
 card across its five distinct rendering branches.
 """
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 
@@ -151,6 +153,7 @@ def test_record_verification_writes_record_and_flips_gate(tmp_path: Path) -> Non
             "implementation_steps": ["step"],
             "acceptance_checks": ["check"],
             "verification_expectations": ["run it"],
+            "verification_command": "pytest",
             "summary": "s",
         },
         "verification": None,

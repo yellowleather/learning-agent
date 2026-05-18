@@ -252,6 +252,7 @@ class FakeProvider:
             implementation_steps=["Create the required files."],
             acceptance_checks=["Files exist."],
             verification_expectations=["Verification is recorded."],
+            verification_command="pytest",
             summary="Implement Week 1.",
         )
 

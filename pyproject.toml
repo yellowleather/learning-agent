@@ -30,6 +30,7 @@ packages = [
   "engine.providers",
   "curriculum",
   "build",
+  "build.agent",
   "learn",
   "verify",
   "ui",

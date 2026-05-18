@@ -45,6 +45,7 @@ class WeekOrchestrator:
             curriculum=self.curriculum,
             provider_factory=self._provider,
             target_repo_path=self.target_repo_path,
+            roadmap_path=self.roadmap_path,
         )
         self.learn = LearnStage(
             state=self.state,
@@ -227,4 +228,3 @@ class WeekOrchestrator:
         if self.verify.requires_evidence(ledger):
             checkpoints.append(self.verify.build_checkpoint(ledger, learning_session))
         return checkpoints
-

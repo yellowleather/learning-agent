@@ -13,6 +13,8 @@ _validate_*) are exercised indirectly here and explicitly by the existing
 controller-level integration tests in test_controller.py.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import pytest

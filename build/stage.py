@@ -8,9 +8,12 @@ where the upcoming BuildAgent (multi-turn loop with tools) will land.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
+from build.agent.runner import BuildAgent
+from build.models import BuildSession
 from curriculum.access import CurriculumAccess
 from engine.errors import EngineError
 from engine.models import CheckpointState, Ledger, TaskSession
@@ -27,11 +30,13 @@ class BuildStage:
         curriculum: CurriculumAccess,
         provider_factory: Callable[[], LLMProvider],
         target_repo_path: Path,
+        roadmap_path: Path | None = None,
     ):
         self.state = state
         self.curriculum = curriculum
         self.provider_factory = provider_factory
         self.target_repo_path = target_repo_path
+        self.roadmap_path = roadmap_path
 
     # -- Public actions ----------------------------------------------------
 
@@ -64,6 +69,34 @@ class BuildStage:
         ledger.state.gates.implementation_complete = bool(required) and len(completed) == len(required)
         self.state.save_ledger(ledger)
         return ledger
+
+    def start_agent(self) -> BuildSession:
+        """Run the BuildAgent against the current generated task brief."""
+        ledger = self.state.load_ledger()
+        if not ledger.state.gates.learning_check_passed:
+            raise EngineError("Cannot start the build agent before the learning check passes.")
+        if not self.state.task_path.exists():
+            raise EngineError("Generate a task before starting the build agent.")
+
+        task_session = self.state.load_task()
+        session = BuildSession(
+            week=task_session.task.week,
+            started_at_utc=datetime.now(timezone.utc).isoformat(),
+        )
+        self.state.save_build_session(session)
+        agent = BuildAgent(
+            state=self.state,
+            provider=self.provider_factory(),
+            target_repo_path=self.target_repo_path,
+            roadmap_path=self.roadmap_path,
+        )
+        session = agent.run(
+            task=task_session.task,
+            required_metrics=ledger.state.metrics.required,
+            session=session,
+        )
+        self.sync_artifacts()
+        return session
 
     def get_task_session(self) -> Optional[TaskSession]:
         """Return the current task session if one has been generated, else None."""

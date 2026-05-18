@@ -102,6 +102,7 @@ class GeneratedTask(StrictModel):
     implementation_steps: List[str] = Field(default_factory=list)
     acceptance_checks: List[str] = Field(default_factory=list)
     verification_expectations: List[str] = Field(default_factory=list)
+    verification_command: str
     summary: str
 
 

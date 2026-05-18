@@ -5,11 +5,14 @@ implementation_complete, the task-session accessor, and the four branches of
 the Implementation checkpoint card.
 """
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 
 import pytest
 
+from engine.providers.base import AgentToolCall, AgentTurnResult
 from engine.config import AppConfig
 from curriculum.access import CurriculumAccess
 from engine.errors import EngineError
@@ -41,7 +44,26 @@ class _StubProvider:
             implementation_steps=["step 1"],
             acceptance_checks=["check 1"],
             verification_expectations=["expect 1"],
+            verification_command="pytest",
             summary="summary",
+        )
+
+    def run_agent_turn(self, system_prompt, messages, tools, deep_reasoning=True):
+        del system_prompt, messages, tools, deep_reasoning
+        return AgentTurnResult(
+            text="Creating the required file.",
+            tool_calls=[
+                AgentToolCall(
+                    id="call-1",
+                    name="write_file",
+                    arguments={"path": "dir_one/file.py", "content": "ok\n"},
+                ),
+                AgentToolCall(
+                    id="call-2",
+                    name="done",
+                    arguments={"status": "completed", "summary": "Built the file.", "notes": ""},
+                ),
+            ],
         )
 
 
@@ -169,6 +191,19 @@ def test_get_task_session_round_trips_after_generation(tmp_path: Path) -> None:
     loaded = stage.get_task_session()
     assert loaded is not None
     assert loaded.task.title == generated.task.title
+
+
+def test_start_agent_runs_current_task_and_syncs_artifacts(tmp_path: Path) -> None:
+    stage = _make_stage(tmp_path)
+    stage.generate_task()
+
+    session = stage.start_agent()
+    ledger = stage.state.load_ledger()
+
+    assert session.report is not None
+    assert session.report.status == "completed"
+    assert session.report.files_touched[0].path == "dir_one/file.py"
+    assert ledger.state.gates.implementation_complete is True
 
 
 def test_build_checkpoint_not_started_with_no_task_and_no_files(tmp_path: Path) -> None:
