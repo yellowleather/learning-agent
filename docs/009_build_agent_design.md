@@ -1,12 +1,10 @@
 # BuildAgent Design
 
-> **Status (May 2026).** This is a forward-looking design document. The
-> data foundation (models, persistence, archive flow) has shipped — see
-> `build/models.py` and `engine/state.py`. The agent loop, tools,
-> executor, prompts, and provider abstraction are **designed but not
-> implemented**. Some open decisions remain (flagged below). This
-> document will need updating as those decisions resolve and as
-> implementation reveals constraints we haven't anticipated.
+> **Status (May 2026).** This is now partially implemented. The data
+> foundation (models, persistence, archive flow), `verification_command`,
+> provider agent-turn abstraction, BuildAgent prompts, local executor,
+> seven-tool surface, and first agent runner are in place. `review_build`,
+> post-failure UX, and the Verify-stage UI redesign remain open.
 
 ## 1. Why this agent exists
 
@@ -319,14 +317,12 @@ build/
 
 ## 4. Required upstream changes
 
-- **Add `verification_command: str` to `GeneratedTask`** in
-  `engine/models.py`. Update `build/prompts/generate_task.md` to ask the
-  provider for the command explicitly. Today it's buried in
-  `verification_expectations`.
-- **Extend the provider interface** (`engine/providers/base.py`) with a
-  tool-use-capable method. Concrete shape TBD — likely a
-  `run_agent_turn(messages, tools, deep_reasoning=True)` method that
-  the implementations map to Anthropic and OpenAI tool-use APIs.
+- **Done:** add `verification_command: str` to `GeneratedTask` in
+  `engine/models.py`. `build/prompts/generate_task.md` now asks the
+  provider for the command explicitly.
+- **Done:** extend the provider interface (`engine/providers/base.py`) with
+  `run_agent_turn(system_prompt, messages, tools, deep_reasoning=True)`,
+  mapped by the Anthropic and OpenAI providers.
 - **Add `review_build` to the provider interface** (Mentor's verdict
   over a `BuildReport`). See §6.
 

@@ -10,12 +10,12 @@ prompts that shape build-domain artefacts, and the upcoming `BuildAgent`
 ```
 build/
 ├── stage.py             # BuildStage — gate-protected brief generation
-│                        #   and the artifact-completion scan
+│                        #   agent start, and the artifact-completion scan
 ├── models.py            # CommandRun, FileTouched, BuildReport,
 │                        #   BuildSession, TranscriptEvent
 ├── prompts.py           # load_prompt / render_prompt for build/prompts/
-├── prompts/             # build-domain prompt assets (generate_task.md;
-│                        #   future build_agent_system.md)
+├── prompts/             # build-domain prompt assets
+├── agent/               # tools, local executor, and BuildAgent runner
 └── tests/               # stage tests + persistence tests
 ```
 
