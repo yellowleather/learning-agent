@@ -236,6 +236,68 @@ The visible text the model emits between tool calls becomes pure
 narration *for the user*, not the model thinking out loud. That keeps
 the transcript clean while preserving reasoning depth.
 
+### 2.13 `review_build` pre-fills observation; reflection stays human-only
+
+When `review_build` (Mentor) judges the agent's `BuildReport`, the
+platform pre-fills the user's `ObservationRecord` with the factual
+fields the agent already captured:
+
+- `command` (the verification command that was run)
+- `artifact_path` (the deliverable path being measured)
+- `latency_p95_ms`, `tokens_per_sec`, `prompt_tokens`, `output_tokens`
+  (from the agent's `record_metric` calls)
+- `notes` (a short summary derived from the agent's narrative)
+
+**`reliability` is *not* pre-filled.** It always lands at `"uncertain"`,
+regardless of how the run looked. The user must explicitly upgrade
+`reliability` to `"valid"` (or one of the invalid variants) in the
+Verify UI after reviewing the pre-filled values. Since
+`evidence_reliable` only flips when `reliability == "valid"`, the
+human-judgment gate is preserved end-to-end: the agent provides data,
+the user provides judgment, an agent that "lies" about a metric value
+can't bypass anything.
+
+The `ReflectionRecord` is **never** pre-filled. Reflection is the user's
+own take on whether the result is trustworthy and what would change
+their confidence — drafting it on the user's behalf would defeat its
+purpose.
+
+### 2.14 Tool use via `LLMProvider.run_agent_turn`
+
+The provider interface gets one more method:
+
+```python
+class LLMProvider(ABC):
+    ...
+    @abstractmethod
+    def run_agent_turn(
+        self,
+        system_prompt: str,
+        messages: list[dict],
+        tools: list[dict],
+        deep_reasoning: bool = True,
+    ) -> AgentTurnResult: ...
+```
+
+We do **not** introduce a separate `AgentProvider` interface. Reasons:
+
+- The codebase has exactly one agentic client today (BuildAgent). A
+  parallel interface would buy nothing.
+- The existing `LLMProvider` already aggregates several call shapes
+  (`generate_question_bank`, `score_learning_question`,
+  `answer_topic_chat`, …) — agentic is one more.
+- If multiple agentic clients show up later (e.g. an agentic
+  `review_build`), refactoring to a separate interface is mechanical.
+
+The `deep_reasoning` flag maps to provider-native extended thinking:
+Anthropic's `thinking={"type": "enabled", "budget_tokens": 8000}`,
+OpenAI's reasoning-model + `reasoning_effort="high"`.
+
+`AgentTurnResult` is a small typed wrapper around what comes back from
+the API — text deltas, any tool calls the model wants to make, and a
+terminal flag. Defined in `engine/providers/base.py` alongside the
+method declaration.
+
 ## 3. Module layout (planned)
 
 ```
@@ -297,18 +359,7 @@ User clicks "Start Build" in UI
 
 ## 6. Still-open decisions
 
-### 6.1 `review_build` ↔ observation/reflection
-
-When the Mentor reviews the agent's report, does it pre-fill the user's
-`observation` record? Draft a `reflection` for the user to edit?
-
-**Working assumption:** Mentor pre-fills `observation` (numeric metric
-values, reliability label) since those are derived from what actually
-happened during the run. `reflection` stays purely human-authored — the
-reflection is *the user's* take on whether the result is trustworthy.
-Final answer pending.
-
-### 6.2 Post-failure UX
+### 6.1 Post-failure UX
 
 When Mentor halts on a failing verdict, what does the user see and what
 can they do?
@@ -326,26 +377,15 @@ can they do?
 Final answer pending. Once locked, this is where the Verify-stage UI
 redesign starts.
 
-### 6.3 Verify-stage UI redesign
+### 6.2 Verify-stage UI redesign
 
 Today's `render_verify_stage` is form fields for manual entry. After
 the agent ships and `review_build` produces a multi-facet verdict, the
 Verify stage becomes "review the agent's diffs + read the Mentor's
-verdict + confirm reliability". The redesign is downstream of 6.1 and
-6.2 — design after those are locked.
+verdict + confirm reliability". The redesign is downstream of 6.1 —
+design after that's locked.
 
-### 6.4 Concrete provider abstraction for tool use
-
-Both Anthropic and OpenAI support tool use, but the API shape is
-different enough that a thin adapter is needed. Open: is it cleaner to
-extend `LLMProvider` with a `run_agent_turn(...)` method, or introduce
-a separate `AgentProvider` interface that both adapters implement and
-the build agent depends on?
-
-**Working assumption:** extend `LLMProvider`. The existing interface
-already aggregates several call shapes; adding tool-use is one more.
-
-### 6.5 Cost / token budgets
+### 6.3 Cost / token budgets
 
 Currently only a 30-min wall clock. We agreed to defer dollar / token
 ceilings to v2. Worth revisiting once we have a few real runs and can
@@ -359,9 +399,9 @@ see what budget the agent actually needs.
 - The exact text of the system prompt — captured here as structure +
   intent; the final language lands in `build/prompts/build_agent_system.md`
   during implementation.
-- The implementation of `review_build` — covered separately once 6.1 and
-  6.2 settle.
-- The Verify-stage UI redesign — covered separately once 6.2 settles.
+- The implementation of `review_build` — covered separately once 6.1
+  settles.
+- The Verify-stage UI redesign — covered separately once 6.1 settles.
 
 ## 8. Related docs
 
