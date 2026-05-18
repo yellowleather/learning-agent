@@ -310,6 +310,19 @@ def task_generate_command() -> None:
         exit_on_error(exc)
 
 
+@task_app.command("run-build")
+def task_run_build_command() -> None:
+    try:
+        controller = get_controller()
+        session = controller.build.start_agent()
+        status = session.report.status if session.report is not None else "unknown"
+        typer.echo(f"BuildAgent finished with status: {status}.")
+        if session.report is not None:
+            typer.echo(session.report.summary)
+    except EngineError as exc:
+        exit_on_error(exc)
+
+
 @record_app.command("sync")
 def record_sync_command() -> None:
     try:

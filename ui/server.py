@@ -247,6 +247,10 @@ def run_action(action: str, form: Dict[str, list[str]]) -> str:
     if action == "task_generate":
         task = controller.build.generate_task()
         return f"Generated task for Week {task.task.week}."
+    if action == "build_agent_start":
+        session = controller.build.start_agent()
+        status = session.report.status if session.report is not None else "unknown"
+        return f"BuildAgent finished with status: {status}."
     if action == "record_sync":
         ledger = controller.build.sync_artifacts()
         completed = len(ledger.state.artifacts.completed_files)
@@ -6161,6 +6165,7 @@ def render_implementation_section_v3(status: dict) -> str:
         <h2>Implementation</h2>
         <div class="toolbar-actions-v3">
           {render_toolbar_action_form('task_generate', task_label, disabled=not status.get('can_generate_task'))}
+          {render_toolbar_action_form('build_agent_start', 'Start Build', disabled=not status.get('task_generated'))}
           {render_toolbar_action_form('record_sync', 'Scan Repository', secondary=True)}
         </div>
       </div>
@@ -6376,7 +6381,7 @@ def render_build_stage(status: dict, task_session: Optional[dict]) -> str:
             f"<div class='subpanel'><h3>Implementation Steps</h3><ul class='summary-list tight'>{render_items(task['implementation_steps'])}</ul></div>"
             f"<div class='subpanel'><h3>Acceptance Checks</h3><ul class='summary-list tight'>{render_items(task['acceptance_checks'])}</ul></div>"
             f"</div>"
-            f"<div class='subpanel'><h3>Verification Expectations</h3><ul class='summary-list tight'>{render_items(task['verification_expectations'])}</ul><p class='fine-print' style='margin-top: 10px;'>{escape(task['summary'])}</p></div>"
+            f"<div class='subpanel'><h3>Verification Expectations</h3><ul class='summary-list tight'>{render_items(task['verification_expectations'])}</ul><p><code>{escape(task.get('verification_command', ''))}</code></p><p class='fine-print' style='margin-top: 10px;'>{escape(task['summary'])}</p></div>"
         )
     return f"""
     <section id="stage-build" class="stage-card workflow-stage-card">
@@ -6394,6 +6399,7 @@ def render_build_stage(status: dict, task_session: Optional[dict]) -> str:
       </div>
       <div class="action-grid">
         {render_button_panel('Generate Task', 'Create the structured Junior SWE task once the learning check passes.', 'task_generate', 'Generate Task', disabled=not status.get('can_generate_task'))}
+        {render_button_panel('Start Build', 'Run the BuildAgent against the generated brief.', 'build_agent_start', 'Start Build', disabled=not status.get('task_generated'))}
         {render_button_panel('Sync Artifacts', 'Scan the target repo for the required files.', 'record_sync', 'Sync Files', secondary=True)}
       </div>
       <article class="subpanel stage-surface">
@@ -7357,7 +7363,7 @@ def render_task_panel(status: dict, task_session: Optional[dict], current_step: 
             f"<div class='subpanel'><h3>Implementation Steps</h3><ul class='summary-list tight'>{render_items(task['implementation_steps'])}</ul></div>"
             f"<div class='subpanel'><h3>Acceptance Checks</h3><ul class='summary-list tight'>{render_items(task['acceptance_checks'])}</ul></div>"
             f"</div>"
-            f"<div class='subpanel'><h3>Verification Expectations</h3><ul class='summary-list tight'>{render_items(task['verification_expectations'])}</ul><p class='fine-print' style='margin-top: 10px;'>{escape(task['summary'])}</p></div>"
+            f"<div class='subpanel'><h3>Verification Expectations</h3><ul class='summary-list tight'>{render_items(task['verification_expectations'])}</ul><p><code>{escape(task.get('verification_command', ''))}</code></p><p class='fine-print' style='margin-top: 10px;'>{escape(task['summary'])}</p></div>"
         )
     return f"""
     <details id="step-build" class="workflow-step {'current' if current_step == 'build' else ''}" {'open' if current_step == 'build' else ''}>
@@ -7378,6 +7384,7 @@ def render_task_panel(status: dict, task_session: Optional[dict], current_step: 
         </div>
         <div class="action-grid">
           {render_button_panel('Generate Task', 'Create the structured Junior SWE task once the learning check passes.', 'task_generate', 'Generate Task', disabled=not status.get('can_generate_task'))}
+          {render_button_panel('Start Build', 'Run the BuildAgent against the generated brief.', 'build_agent_start', 'Start Build', disabled=not status.get('task_generated'))}
           {render_button_panel('Sync Artifacts', 'Scan the target repo for the required files.', 'record_sync', 'Sync Files', secondary=True)}
         </div>
         <article class="subpanel">
