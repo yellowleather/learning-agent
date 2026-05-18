@@ -7,6 +7,7 @@ import urllib.request
 from typing import Any
 
 from engine.errors import EngineError
+from engine.providers.base import AgentToolCall, AgentTurnResult
 from topic_chat.models import TopicChatTurn
 from engine.providers.openai_provider import OpenAIProvider, ResponseModelT
 
@@ -67,6 +68,47 @@ class AnthropicProvider(OpenAIProvider):
     ):
         yield self.answer_topic_chat(week_spec, context, history, message)
 
+    def run_agent_turn(
+        self,
+        system_prompt: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        deep_reasoning: bool = True,
+    ) -> AgentTurnResult:
+        response = self._messages_create(
+            system_prompt=system_prompt,
+            messages=self._translate_messages_to_anthropic(messages),
+            tools=self._anthropic_tools(tools),
+            temperature=0.2,
+            max_tokens=DEFAULT_MAX_TOKENS,
+            thinking={"type": "enabled", "budget_tokens": 8000} if deep_reasoning else None,
+        )
+        pieces: list[str] = []
+        tool_calls: list[AgentToolCall] = []
+        for block in response.get("content", []):
+            if block.get("type") == "text" and isinstance(block.get("text"), str):
+                pieces.append(block["text"])
+                continue
+            if block.get("type") == "tool_use":
+                raw_input = block.get("input") or {}
+                if not isinstance(raw_input, dict):
+                    raise EngineError("Anthropic tool call input must be a JSON object.")
+                tool_calls.append(
+                    AgentToolCall(
+                        id=str(block.get("id") or ""),
+                        name=str(block.get("name") or ""),
+                        arguments=raw_input,
+                    )
+                )
+        text = "".join(pieces).strip()
+        if not text and not tool_calls:
+            raise EngineError("Anthropic provider returned an empty agent turn.")
+        return AgentTurnResult(
+            text=text,
+            tool_calls=tool_calls,
+            stop_reason=str(response.get("stop_reason") or ""),
+        )
+
     def _request_text(
         self,
         *,
@@ -90,9 +132,12 @@ class AnthropicProvider(OpenAIProvider):
         self,
         *,
         system_prompt: str,
-        user_prompt: str,
         temperature: float,
         max_tokens: int,
+        user_prompt: str | None = None,
+        messages: list[dict[str, Any]] | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        thinking: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not self.model:
             raise EngineError("Config field `model` must be set before using the Anthropic provider.")
@@ -100,13 +145,22 @@ class AnthropicProvider(OpenAIProvider):
         if not api_key:
             raise EngineError("ANTHROPIC_API_KEY must be set before using the Anthropic provider.")
 
-        payload = {
+        if messages is None:
+            if user_prompt is None:
+                raise EngineError("Anthropic request needs either user_prompt or messages.")
+            messages = [{"role": "user", "content": user_prompt}]
+
+        payload: dict[str, Any] = {
             "model": self.model,
             "max_tokens": max_tokens,
             "temperature": temperature,
             "system": system_prompt,
-            "messages": [{"role": "user", "content": user_prompt}],
+            "messages": messages,
         }
+        if tools is not None:
+            payload["tools"] = tools
+        if thinking is not None:
+            payload["thinking"] = thinking
         request = urllib.request.Request(
             ANTHROPIC_API_URL,
             data=json.dumps(payload).encode("utf-8"),
@@ -149,3 +203,60 @@ class AnthropicProvider(OpenAIProvider):
         if detail:
             return EngineError(f"Anthropic request failed with HTTP {status_code}: {detail}")
         return EngineError(f"Anthropic request failed with HTTP {status_code}.")
+
+    def _translate_messages_to_anthropic(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        translated: list[dict[str, Any]] = []
+        # Anthropic requires all tool results from one assistant turn batched into
+        # a single user message, so we buffer them until the run ends or a non-tool
+        # message breaks the sequence.
+        pending_results: list[dict[str, Any]] = []
+
+        for msg in messages:
+            role = msg.get("role")
+
+            if role == "tool":
+                pending_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": str(msg.get("tool_call_id") or ""),
+                    "content": str(msg.get("content") or ""),
+                })
+                continue
+
+            if pending_results:
+                translated.append({"role": "user", "content": pending_results})
+                pending_results = []
+
+            if role == "assistant" and msg.get("tool_calls"):
+                content: list[dict[str, Any]] = []
+                # The model may produce tool_use blocks with no text (e.g. when
+                # extended thinking absorbs the reasoning), so the text block is optional.
+                if msg.get("content"):
+                    content.append({"type": "text", "text": str(msg["content"])})
+                for tc in msg["tool_calls"]:
+                    content.append({
+                        "type": "tool_use",
+                        "id": str(tc["id"]),
+                        "name": str(tc["name"]),
+                        "input": dict(tc["arguments"]),
+                    })
+                translated.append({"role": "assistant", "content": content})
+            else:
+                translated.append(msg)
+
+        if pending_results:
+            translated.append({"role": "user", "content": pending_results})
+
+        return translated
+
+    def _anthropic_tools(self, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        converted = []
+        for tool in tools:
+            function = tool.get("function", tool)
+            converted.append(
+                {
+                    "name": function["name"],
+                    "description": function.get("description", ""),
+                    "input_schema": function.get("parameters", {"type": "object"}),
+                }
+            )
+        return converted

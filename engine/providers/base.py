@@ -4,6 +4,9 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from typing import Any
 
+from pydantic import Field
+
+from engine._base import StrictModel
 from engine.models import (
     GeneratedTask,
     ProgressState,
@@ -19,6 +22,18 @@ from learn.models import (
     QuestionScore,
     ReadingMaterialPayload,
 )
+
+
+class AgentToolCall(StrictModel):
+    id: str
+    name: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentTurnResult(StrictModel):
+    text: str = ""
+    tool_calls: list[AgentToolCall] = Field(default_factory=list)
+    stop_reason: str = ""
 
 
 class LLMProvider(ABC):
@@ -86,3 +101,13 @@ class LLMProvider(ABC):
         message: str,
     ) -> Iterator[str]:
         yield self.answer_topic_chat(week_spec, context, history, message)
+
+    @abstractmethod
+    def run_agent_turn(
+        self,
+        system_prompt: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        deep_reasoning: bool = True,
+    ) -> AgentTurnResult:
+        raise NotImplementedError

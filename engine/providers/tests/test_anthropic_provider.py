@@ -100,6 +100,79 @@ def test_answer_topic_chat_uses_anthropic_messages_api(monkeypatch):
     assert "How should I measure tokens per second?" in captured["user_prompt"]
 
 
+def test_run_agent_turn_parses_anthropic_tool_calls(monkeypatch):
+    provider = AnthropicProvider(model="claude-test")
+    captured = {}
+
+    def fake_messages_create(**kwargs):
+        captured.update(kwargs)
+        return {
+            "stop_reason": "tool_use",
+            "content": [
+                {"type": "text", "text": "I will inspect the file."},
+                {"type": "tool_use", "id": "toolu-1", "name": "read_file", "input": {"path": "src/app.py"}},
+            ],
+        }
+
+    monkeypatch.setattr(provider, "_messages_create", fake_messages_create)
+
+    result = provider.run_agent_turn(
+        system_prompt="system",
+        messages=[{"role": "user", "content": "begin"}],
+        tools=[{"type": "function", "function": {"name": "read_file", "parameters": {"type": "object"}}}],
+    )
+
+    assert captured["system_prompt"] == "system"
+    assert captured["tools"][0]["input_schema"] == {"type": "object"}
+    assert captured["thinking"]["type"] == "enabled"
+    assert result.stop_reason == "tool_use"
+    assert result.tool_calls[0].id == "toolu-1"
+    assert result.tool_calls[0].arguments == {"path": "src/app.py"}
+
+
+def test_run_agent_turn_translates_history_to_anthropic_format(monkeypatch):
+    provider = AnthropicProvider(model="claude-test")
+    captured = {}
+
+    def fake_messages_create(**kwargs):
+        captured.update(kwargs)
+        return {"stop_reason": "end_turn", "content": [{"type": "text", "text": "Done."}]}
+
+    monkeypatch.setattr(provider, "_messages_create", fake_messages_create)
+
+    provider.run_agent_turn(
+        system_prompt="system",
+        messages=[
+            {"role": "user", "content": "begin"},
+            {
+                "role": "assistant",
+                "content": "Reading the file.",
+                "tool_calls": [{"id": "tc-1", "name": "read_file", "arguments": {"path": "src/app.py"}}],
+            },
+            {"role": "tool", "tool_call_id": "tc-1", "name": "read_file", "content": '{"content": "code"}'},
+            {"role": "tool", "tool_call_id": "tc-2", "name": "write_file", "content": '{"ok": true}'},
+        ],
+        tools=[],
+        deep_reasoning=False,
+    )
+
+    sent = captured["messages"]
+    assert sent[0] == {"role": "user", "content": "begin"}
+    assert sent[1]["role"] == "assistant"
+    assert sent[1]["content"][0] == {"type": "text", "text": "Reading the file."}
+    assert sent[1]["content"][1] == {
+        "type": "tool_use",
+        "id": "tc-1",
+        "name": "read_file",
+        "input": {"path": "src/app.py"},
+    }
+    assert sent[2]["role"] == "user"
+    assert sent[2]["content"] == [
+        {"type": "tool_result", "tool_use_id": "tc-1", "content": '{"content": "code"}'},
+        {"type": "tool_result", "tool_use_id": "tc-2", "content": '{"ok": true}'},
+    ]
+
+
 def test_messages_create_surfaces_auth_failure(monkeypatch):
     provider = AnthropicProvider(model="claude-test")
 

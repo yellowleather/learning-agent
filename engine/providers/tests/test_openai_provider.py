@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import httpx
@@ -157,6 +158,123 @@ def test_answer_topic_chat_uses_week_context_and_history(monkeypatch):
     assert "Week goal: Run a model locally and expose it as an API." in prompt
     assert "What should I focus on first?" in prompt
     assert "How should I measure tokens per second?" in prompt
+
+
+def test_run_agent_turn_parses_openai_tool_calls(monkeypatch):
+    provider = OpenAIProvider(model="test-model")
+    captured = {}
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="tool_calls",
+                        message=SimpleNamespace(
+                            content="I will inspect the file.",
+                            tool_calls=[
+                                SimpleNamespace(
+                                    id="call-1",
+                                    function=SimpleNamespace(
+                                        name="read_file",
+                                        arguments='{"path": "src/app.py"}',
+                                    ),
+                                )
+                            ],
+                        ),
+                    )
+                ]
+            )
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+    monkeypatch.setattr(provider, "_client", lambda: fake_client)
+
+    result = provider.run_agent_turn(
+        system_prompt="system",
+        messages=[{"role": "user", "content": "begin"}],
+        tools=[{"type": "function", "function": {"name": "read_file", "parameters": {"type": "object"}}}],
+    )
+
+    assert captured["messages"][0] == {"role": "system", "content": "system"}
+    assert captured["reasoning_effort"] == "high"
+    assert result.text == "I will inspect the file."
+    assert result.tool_calls[0].name == "read_file"
+    assert result.tool_calls[0].arguments == {"path": "src/app.py"}
+
+
+def test_run_agent_turn_translates_history_to_openai_format(monkeypatch):
+    provider = OpenAIProvider(model="test-model")
+    captured = {}
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                choices=[SimpleNamespace(
+                    finish_reason="stop",
+                    message=SimpleNamespace(content="Done.", tool_calls=None),
+                )]
+            )
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+    monkeypatch.setattr(provider, "_client", lambda: fake_client)
+
+    provider.run_agent_turn(
+        system_prompt="system",
+        messages=[
+            {"role": "user", "content": "begin"},
+            {
+                "role": "assistant",
+                "content": "Reading.",
+                "tool_calls": [{"id": "tc-1", "name": "read_file", "arguments": {"path": "src/app.py"}}],
+            },
+            {"role": "tool", "tool_call_id": "tc-1", "name": "read_file", "content": '{"content": "code"}'},
+        ],
+        tools=[],
+        deep_reasoning=False,
+    )
+
+    sent = captured["messages"]
+    assert sent[0] == {"role": "system", "content": "system"}
+    assert sent[1] == {"role": "user", "content": "begin"}
+    assert sent[2]["role"] == "assistant"
+    assert sent[2]["content"] == "Reading."
+    assert sent[2]["tool_calls"][0]["id"] == "tc-1"
+    assert sent[2]["tool_calls"][0]["type"] == "function"
+    assert sent[2]["tool_calls"][0]["function"]["name"] == "read_file"
+    assert json.loads(sent[2]["tool_calls"][0]["function"]["arguments"]) == {"path": "src/app.py"}
+    assert sent[3] == {"role": "tool", "tool_call_id": "tc-1", "name": "read_file", "content": '{"content": "code"}'}
+
+
+def test_run_agent_turn_can_disable_openai_reasoning_effort(monkeypatch):
+    provider = OpenAIProvider(model="test-model")
+    captured = {}
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="stop",
+                        message=SimpleNamespace(content="No tools needed.", tool_calls=[]),
+                    )
+                ]
+            )
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+    monkeypatch.setattr(provider, "_client", lambda: fake_client)
+
+    result = provider.run_agent_turn(
+        system_prompt="system",
+        messages=[{"role": "user", "content": "begin"}],
+        tools=[],
+        deep_reasoning=False,
+    )
+
+    assert "reasoning_effort" not in captured
+    assert result.text == "No tools needed."
 
 
 def test_generate_reading_material_uses_blog_style_contract(monkeypatch):

@@ -25,7 +25,7 @@ from learn.models import (
 )
 from build.prompts import render_prompt as build_render_prompt
 from engine.prompts import load_prompt
-from engine.providers.base import LLMProvider
+from engine.providers.base import AgentToolCall, AgentTurnResult, LLMProvider
 from learn.prompts import render_prompt as learn_render_prompt
 from topic_chat.prompts import render_prompt as chat_render_prompt
 
@@ -180,6 +180,48 @@ class OpenAIProvider(LLMProvider):
         if not emitted:
             raise EngineError("OpenAI provider returned an empty topic chat response.")
 
+    def run_agent_turn(
+        self,
+        system_prompt: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        deep_reasoning: bool = True,
+    ) -> AgentTurnResult:
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "temperature": 0.2,
+            "messages": [{"role": "system", "content": system_prompt}, *self._translate_messages_to_openai(messages)],
+            "tools": tools,
+        }
+        if deep_reasoning:
+            kwargs["reasoning_effort"] = "high"
+
+        response = self._chat_completions_create(**kwargs)
+        message = response.choices[0].message
+        text = self._coerce_stream_text(getattr(message, "content", None)).strip()
+        tool_calls: list[AgentToolCall] = []
+        for raw_call in getattr(message, "tool_calls", None) or []:
+            function = getattr(raw_call, "function", None)
+            name = getattr(function, "name", "") if function is not None else ""
+            raw_arguments = getattr(function, "arguments", "{}") if function is not None else "{}"
+            try:
+                arguments = json.loads(raw_arguments or "{}")
+            except json.JSONDecodeError as exc:
+                raise EngineError(f"OpenAI tool call arguments were not valid JSON: {exc}") from exc
+            if not isinstance(arguments, dict):
+                raise EngineError("OpenAI tool call arguments must be a JSON object.")
+            tool_calls.append(
+                AgentToolCall(
+                    id=str(getattr(raw_call, "id", "")),
+                    name=str(name),
+                    arguments=arguments,
+                )
+            )
+        stop_reason = str(getattr(response.choices[0], "finish_reason", "") or "")
+        if not text and not tool_calls:
+            raise EngineError("OpenAI provider returned an empty agent turn.")
+        return AgentTurnResult(text=text, tool_calls=tool_calls, stop_reason=stop_reason)
+
     def _topic_chat_messages(
         self,
         week_spec: dict[str, Any],
@@ -205,6 +247,31 @@ class OpenAIProvider(LLMProvider):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
+
+    def _translate_messages_to_openai(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        translated: list[dict[str, Any]] = []
+        for msg in messages:
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                wire_calls = [
+                    {
+                        "id": str(tc["id"]),
+                        "type": "function",
+                        "function": {
+                            "name": str(tc["name"]),
+                            # OpenAI encodes arguments as a JSON string inside the payload, not an object.
+                            "arguments": json.dumps(tc["arguments"]),
+                        },
+                    }
+                    for tc in msg["tool_calls"]
+                ]
+                translated.append({
+                    "role": "assistant",
+                    "content": msg.get("content") or None,
+                    "tool_calls": wire_calls,
+                })
+            else:
+                translated.append(msg)
+        return translated
 
     def _coerce_stream_text(self, content: Any) -> str:
         if isinstance(content, str):
